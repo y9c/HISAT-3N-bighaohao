@@ -106,21 +106,43 @@ public:
      * always return a index.
      * if cannot find, return the index which has bigger value than input readNameID.
      */
-    int searchReadNameID (unsigned long long&readNameID, int start, int end) {
+    //二分法递归查找
+    // int searchReadNameID (unsigned long long&readNameID, int start, int end) {
+    //     if (uniqueIDs.empty()) {
+    //         return 0;
+    //     }
+    //     if (start <= end) {
+    //         int middle = (start + end) / 2;
+    //         if (uniqueIDs[middle].readNameID == readNameID) {
+    //             return middle;
+    //         }
+    //         if (uniqueIDs[middle].readNameID > readNameID) {
+    //             return searchReadNameID(readNameID, start, middle-1);
+    //         }
+    //         return searchReadNameID(readNameID, middle+1, end);
+    //     }
+    //     return start; // return the bigger one
+    // }
+    //STL优化
+    int searchReadNameID(unsigned long long& readNameID, int start, int end) {
         if (uniqueIDs.empty()) {
             return 0;
         }
-        if (start <= end) {
-            int middle = (start + end) / 2;
-            if (uniqueIDs[middle].readNameID == readNameID) {
+        int middle=0;
+        while (start <= end) {
+            middle = (start + end) / 2;
+            auto& midValue = uniqueIDs[middle].readNameID;
+
+            if (midValue == readNameID) {
                 return middle;
             }
-            if (uniqueIDs[middle].readNameID > readNameID) {
-                return searchReadNameID(readNameID, start, middle-1);
+            if (midValue > readNameID) {
+                end = middle - 1;
+            } else {
+                start = middle + 1;
             }
-            return searchReadNameID(readNameID, middle+1, end);
         }
-        return start; // return the bigger one
+        return start;  // 返回大于等于 readNameID 的最小索引
     }
 
 

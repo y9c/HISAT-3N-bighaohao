@@ -21,6 +21,7 @@
 #include <iostream>
 #include <getopt.h>
 #include "position_3n_table.h"
+#include <chrono>
 
 using namespace std;
 
@@ -32,7 +33,7 @@ bool uniqueOnly = false;
 bool multipleOnly = false;
 bool CG_only = false;
 int nThreads = 1;
-long long int loadingBlockSize = 1000000;
+long long int loadingBlockSize = 3200000000; // 1 MB  --> 3 GB
 char convertFrom = '0';
 char convertTo = '0';
 char convertFromComplement;
@@ -242,10 +243,20 @@ bool getSAMChromosomePos(string* line, string& chr, long long int& pos) {
 
 
 int hisat_3n_table()
-{
+{   
+    auto start = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+
     positions = new Positions(refFileName, nThreads, addedChrName, removedChrName);
 
+    end = std::chrono::high_resolution_clock::now();
+    duration = end - start;
+    std::cout << "Code block executed in: " << duration.count() << " seconds." << std::endl;
+
     // open #nThreads workers
+    // thread(待执行函数，参数1，参数2)
+    //这段代码创建了 nThreads 个工作线程，每个线程调用 Positions::append 方法，并传入 positions 对象和 i 作为参数。
     vector<thread*> workers;
     for (int i = 0; i < nThreads; i++) {
         workers.push_back(new thread(&Positions::append, positions, i));
@@ -283,7 +294,7 @@ int hisat_3n_table()
             continue;
         }
         // limit the linePool size to save memory
-        while(positions->linePool.size() > 1000 * nThreads) {
+        while(positions->linePool.size() > 100000 * nThreads) {
             this_thread::sleep_for (std::chrono::microseconds(1));
         }
         // if the SAM line is empty or unmapped, get the next SAM line.
@@ -293,26 +304,52 @@ int hisat_3n_table()
         }
         // if the samChromosome is different than current positions' chromosome, finish all SAM line.
         // then load a new reference chromosome.
-        if (samChromosome != positions->chromosome) {
+        if (samChromosome != positions->chromosome) {   //染色体改变
             // wait all line is processed
-            while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
+            while (!positions->linePool.empty() || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
             }
-            positions->appendingFinished();
-            positions->moveAllToOutput();
-            positions->loadNewChromosome(samChromosome);
+            positions->appendingFinished(); //等待所有工作进程的append操作完成
+
+            // 获取当前时间点
+            start = std::chrono::high_resolution_clock::now();
+            std::cout<<"begin moveallto output;  positiong->chr="<<positions->chromosome<<"   now samChr="<<samChromosome<<std::endl;
+            //positions->output_thread_working=false; //先暂停输出线程
+            positions->moveAllToOutput();   //性能瓶颈
+
+            end = std::chrono::high_resolution_clock::now();
+            duration = end - start;
+            std::cout << "Code block executed in: " << duration.count() << " seconds." << std::endl;
+
+
+            start = std::chrono::high_resolution_clock::now();
+
+            //positions->output_thread_working=true;  //重新启动输出线程
+            positions->loadNewChromosome(samChromosome);    //性能瓶颈
+
+            end = std::chrono::high_resolution_clock::now();
+            duration = end - start;
+            std::cout << "Code block executed in: " << duration.count() << " seconds." << std::endl;
+
+
             reloadPos = loadingBlockSize;
             lastPos = 0;
         }
         // if the samPos is larger than reloadPos, load 1 loadingBlockSize bp in from reference.
         while (samPos > reloadPos) {
-            while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
+            while (!positions->linePool.empty() || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
             }
             positions->appendingFinished();
+
+            std::cout<<"begin move block to output"<<std::endl;
+            //positions->output_thread_working=false; //先暂停输出线程
             positions->moveBlockToOutput();
+            //positions->output_thread_working=true;  //重新启动输出线程
             positions->loadMore();
             reloadPos += loadingBlockSize;
+
+            
         }
         if (lastPos > samPos) {
             cerr << "The input alignment file is not sorted. Please use sorted SAM file as alignment file." << endl;
@@ -338,7 +375,7 @@ int hisat_3n_table()
     // move all position to outputPool
     positions->moveAllToOutput();
     // wait until outputPool is empty
-    while (!positions->outputPositionPool.empty()) {
+    while (!positions->outputPositionPool_2.empty()) {
         this_thread::sleep_for (std::chrono::microseconds(100));
     }
     // stop all thread and clean

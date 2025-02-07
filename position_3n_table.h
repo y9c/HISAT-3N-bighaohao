@@ -222,6 +222,13 @@ public:
     SafeQueue<string*> freeLinePool; // pool to store free string pointer for SAM line.
     SafeQueue<Position*> freePositionPool; // pool to store free position pointer for reference position.
     SafeQueue<Position*> outputPositionPool; // pool to store the reference position which is loaded and ready to output.
+
+    //更改输出池为普通队列，取消锁
+    std::queue<Position*> freePositionPool_2;
+    std::queue<Position*> outputPositionPool_2;
+    // 更改为无锁队列
+    moodycamel::ReaderWriterQueue<Position*> outputPositionPool_3;
+
     bool working;
     mutex mutex_;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
@@ -242,6 +249,7 @@ public:
         }
         refFile.open(inputRefFileName, ios_base::in);
         LoadChromosomeNamesPos();
+        freePositionPool_init();
     }
 
     ~Positions() {
@@ -252,7 +260,45 @@ public:
         while(freePositionPool.popFront(pos)) {
             delete pos;
         }
+        while(!freePositionPool_2.empty()) {
+            pos=freePositionPool_2.front();
+            freePositionPool_2.pop();
+            delete pos;
+        }
     }
+
+    void freePositionPool_init()
+    {
+        std::mutex queueMutex;  // 保护 queue 的 mutex
+        int positionsPerThread=100000000;
+        const int temp_numThreads = 2;  // 启动 2 个线程
+        #pragma omp parallel num_threads(temp_numThreads)
+        {
+            // 每个线程有一个局部的 Position 队列
+            std::queue<Position*> localQueue;
+            // 获取线程 ID
+            int threadId = omp_get_thread_num();
+            std::cout<<threadId<<std::endl;
+
+            for (int i = 0; i < positionsPerThread; ++i) {
+                Position* newPosition = new Position();  // 创建新对象
+                localQueue.push(newPosition);  // 将指针推入该线程的局部队列
+            }
+
+            std::cout<<"begin push"<<std::endl;
+            // // 合并局部队列到全局队列
+            queueMutex.lock();
+            while (!localQueue.empty()) {
+                freePositionPool_2.push(localQueue.front());
+                localQueue.pop();
+            }
+            queueMutex.unlock();
+
+            std::cout<<"end push"<<std::endl;
+        }
+    }
+
+
 
     /**
      * given the target Position output the corresponding position index in refPositions.
@@ -360,8 +406,45 @@ public:
 
         *out_ << "ref\tpos\tstrand\tconvertedBaseQualities\tconvertedBaseCount\tunconvertedBaseQualities\tunconvertedBaseCount\n";
         Position* pos;
+        // 原代码
+        // while (working) {
+        //     if (outputPositionPool.popFront(pos)) {
+        //         *out_ << pos->chromosome << '\t'
+        //                   << to_string(pos->location) << '\t'
+        //                   << pos->strand << '\t'
+        //                   << pos->convertedQualities << '\t'
+        //                   << to_string(pos->convertedQualities.size()) << '\t'
+        //                   << pos->unconvertedQualities << '\t'
+        //                   << to_string(pos->unconvertedQualities.size()) << '\n';
+        //         returnPosition(pos);
+        //     } else {
+        //         this_thread::sleep_for (std::chrono::microseconds(1));
+        //     }
+        // }
+
+        //修正版
+        // while (working) {
+        //     if (!outputPositionPool_2.empty() && output_thread_working) {
+        //         pos=outputPositionPool_2.front();
+        //         outputPositionPool_2.pop();
+        //         *out_ << pos->chromosome << '\t'
+        //                   << to_string(pos->location) << '\t'
+        //                   << pos->strand << '\t'
+        //                   << pos->convertedQualities << '\t'
+        //                   << to_string(pos->convertedQualities.size()) << '\t'
+        //                   << pos->unconvertedQualities << '\t'
+        //                   << to_string(pos->unconvertedQualities.size()) << '\n';
+        //         returnPosition(pos);
+        //     } else {
+        //         this_thread::sleep_for (std::chrono::microseconds(1));
+        //     }
+        // }
+
+        // 无锁队列修正版 
+        bool succeeded;
         while (working) {
-            if (outputPositionPool.popFront(pos)) {
+            if (outputPositionPool_3.try_dequeue(pos)) { //尝试从队列中取出一个元素。如果队列为空，try_dequeue 会返回 false。
+                //如果取出成功，返回的元素将保存在 number 中。
                 *out_ << pos->chromosome << '\t'
                           << to_string(pos->location) << '\t'
                           << pos->strand << '\t'
@@ -390,7 +473,9 @@ public:
                 if (refPositions[index]->empty() || refPositions[index]->strand == '?') {
                     returnPosition(refPositions[index]);
                 } else {
-                    outputPositionPool.push(refPositions[index]);
+                    //outputPositionPool.push(refPositions[index]);
+                    //outputPositionPool_2.push(refPositions[index]);
+                    outputPositionPool_3.enqueue(refPositions[index]);
                 }
             } else {
                 break;
@@ -568,11 +653,19 @@ public:
     /**
      * get a Position pointer from freePositionPool, if freePositionPool is empty, make a new Position pointer.
      */
-    void getFreePosition(Position*& newPosition) {
-        while (outputPositionPool.size() >= 10000) {
+    void getFreePosition(Position*& newPosition) {          //loadnewch 加载新染色体主线程调用
+        while (outputPositionPool_2.size() >= 10000000) {     //原来为outputpositiongpool
             this_thread::sleep_for (std::chrono::microseconds(1));
         }
-        if (freePositionPool.popFront(newPosition)) {
+        // if (freePositionPool.popFront(newPosition)) {
+        //     return;
+        // } else {
+        //     newPosition = new Position();
+        // }
+        //修改为普通queue
+        if (!freePositionPool_2.empty()) {
+            newPosition=freePositionPool_2.front();
+            freePositionPool_2.pop();
             return;
         } else {
             newPosition = new Position();
@@ -592,7 +685,8 @@ public:
      */
     void returnPosition(Position* pos) {
         pos->initialize();
-        freePositionPool.push(pos);
+        //freePositionPool.push(pos);
+        freePositionPool_2.push(pos);
     }
 
     /**

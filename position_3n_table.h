@@ -27,6 +27,11 @@
 #include <thread>
 #include <cassert>
 #include "alignment_3n_table.h"
+#include <algorithm> // 需要包含头文件
+#include <deque> //新增头文件
+#include <queue>
+#include <omp.h>
+#include "readerwriterqueue.h"
 
 using namespace std;
 
@@ -403,14 +408,62 @@ public:
         if (refPositions.empty()) {
             return;
         }
-        for (int index = 0; index < refPositions.size(); index++) {
-            if (refPositions[index]->empty() || refPositions[index]->strand == '?') {
-                returnPosition(refPositions[index]);
-            } else {
+
+        int index=0;
+        int tempsize=refPositions.size();
+        bool temp_empty_flag[tempsize];
+        std::cout<<tempsize<<std::endl;
+        std::mutex queueMutex;
+        int count=0;
+        #pragma omp parallel num_threads(8)
+        {   
+            // 局部池
+            std::queue<Position*> localFreePool;
+            #pragma omp for
+            for (index = 0; index < tempsize; index++) {
+                temp_empty_flag[index]=  (refPositions[index]->strand == '?' || refPositions[index]->empty());
+                if (temp_empty_flag[index]) {
+                    refPositions[index]->initialize();
+                    localFreePool.push(refPositions[index]);
+                } 
+                else {
                 vector<uniqueID>().swap(refPositions[index]->uniqueIDs);
-                outputPositionPool.push(refPositions[index]);
+                    //outputPositionPool_2.push(refPositions[index]); 有序步骤放到最后
             }
         }
+            int thread_id = omp_get_thread_num(); 
+            //// 合并局部的 freePositionPool 到全局的 freePositionPool_2
+            queueMutex.lock();
+            std::cout<<"now localfreepool size="<<localFreePool.size()<<" "<<thread_id<<std::endl;
+            while(!localFreePool.empty())
+            {
+                freePositionPool_2.push(localFreePool.front());
+                localFreePool.pop();
+            }
+            queueMutex.unlock();
+        }
+
+        //下面这个串行
+        for (index = 0; index < tempsize; index++) {
+            if (!temp_empty_flag[index]) {              //大部分是空，小部分是非空
+                //outputPositionPool_2.push(refPositions[index]);
+                outputPositionPool_3.enqueue(refPositions[index]);
+                count++;
+            } 
+        }
+        std::cout<<"all !temp_empty_flag_count="<<count<<std::endl;
+
+
+        // //原来的代码
+        // for (int index = 0; index < refPositions.size(); index++) {
+        //     if (refPositions[index]->strand == '?' || refPositions[index]->empty()) {   //短路求值，更改顺序，前者性能开销更小
+        //         returnPosition(refPositions[index]);
+        //     } else {
+        //         vector<uniqueID>().swap(refPositions[index]->uniqueIDs);
+        //         //outputPositionPool.push(refPositions[index]);
+        //         outputPositionPool_2.push(refPositions[index]);
+        //     }
+        // }
         refPositions.clear();
     }
 

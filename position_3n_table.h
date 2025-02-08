@@ -32,6 +32,8 @@
 #include <queue>
 #include <omp.h>
 #include "readerwriterqueue.h"
+#include "concurrentqueue.h"
+#include <atomic>
 
 using namespace std;
 
@@ -243,6 +245,7 @@ public:
     std::queue<Position*> outputPositionPool_2;
     // 更改为无锁队列
     moodycamel::ReaderWriterQueue<Position*> outputPositionPool_3;
+    moodycamel::ConcurrentQueue<string*> linePool_3;
 
     bool working;
     bool output_thread_working; //输出线程是否工作
@@ -254,6 +257,9 @@ public:
     ChromosomeFilePositions chromosomePos; // store the chromosome name and it's streamPos. To quickly find new chromosome in file.
     bool addedChrName = false;
     bool removedChrName = false;
+    // vector<atomic<bool>> worker_finished;    //新声明标志量
+    // atomic<bool> wk_f;
+    //std::atomic<int> doneConsumers(0); //用于同步
 
     Positions(string inputRefFileName, int inputNThreads, bool inputAddedChrName, bool inputRemovedChrName) {
         working = true;
@@ -263,6 +269,8 @@ public:
         removedChrName = inputRemovedChrName;
         for (int i = 0; i < nThreads; i++) {
             workerLock.push_back(new mutex);
+            //worker_finished.push_back(std::atomic<bool>(false));
+            //wk_f=true;
         }
         refFile.open(inputRefFileName, ios_base::in);
         LoadChromosomeNamesPos();
@@ -550,7 +558,7 @@ public:
         int index=0;
         int tempsize=refPositions.size();
         bool temp_empty_flag[tempsize];
-        std::cout<<tempsize<<std::endl;
+        std::cout<<"refpositions size = "<<tempsize<<std::endl;
         std::mutex queueMutex;
         int count=0;
         #pragma omp parallel num_threads(8)
@@ -572,7 +580,7 @@ public:
             int thread_id = omp_get_thread_num(); 
             //// 合并局部的 freePositionPool 到全局的 freePositionPool_2
             queueMutex.lock();
-            std::cout<<"now localfreepool size="<<localFreePool.size()<<" "<<thread_id<<std::endl;
+            //std::cout<<"now localfreepool size="<<localFreePool.size()<<" "<<thread_id<<std::endl;
             while(!localFreePool.empty())
             {
                 freePositionPool_2.push(localFreePool.front());
@@ -749,6 +757,27 @@ public:
         freePositionPool_2.push(pos);
     }
 
+    // void set_worker_false()
+    // {
+    //     for(int i=0; i < nThreads; i++)
+    //     {
+    //         worker_finished[i]=false;
+    //     }
+    // }
+
+    // bool get_worker_finished()
+    // {
+    //     bool flag=true;
+    //     for(int i=0; i < nThreads; i++)
+    //     {
+    //         if(worker_finished[i]=false)
+    //         {
+    //             flag=false;
+    //         }
+    //     }
+    //     return flag;
+    // }
+    
     /**
      * this is the working function.
      * it take the SAM line from linePool, parse it.
@@ -760,9 +789,12 @@ public:
 
         while (working) {
             workerLock[threadID]->lock();       //无用时
-            if(!linePool.popFront(line)) {
-                workerLock[threadID]->unlock();     
-                this_thread::sleep_for (std::chrono::nanoseconds(1));   //用时4%
+            //if(!linePool.popFront(line)) {
+            if(!linePool_3.try_dequeue(line)) {     //成功返回true ！ -> false
+                //worker_finished[threadID]=true;
+                workerLock[threadID]->unlock();         //进入此步则表示已使用完
+                this_thread::sleep_for (std::chrono::nanoseconds(1000));   //用时4%
+                //wk_f=true;
                 continue;
             }
             while (refPositions.empty()) {

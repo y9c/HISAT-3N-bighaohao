@@ -209,6 +209,10 @@ static void parseOptions(int argc, const char **argv) {
  * give a SAM line, extract the chromosome and position information.
  * return true if the SAM line is mapped. return false if SAM line is not maped.
  */
+/**
+ * 给定一行 SAM 格式的字符串，提取染色体和位置的信息。
+ * 如果该行是已映射（mapped）的，返回 true；如果该行未映射（unmapped），返回 false。
+ */
 bool getSAMChromosomePos(string* line, string& chr, long long int& pos) {
     int startPosition = 0;
     int endPosition = 0;
@@ -277,7 +281,7 @@ int hisat_3n_table()
     }
 
     string* line; // temporary string to get SAM line.
-    string samChromosome; // the chromosome name of current SAM line.
+    string samChromosome; // the chromosome name of current SAM line.   //目前处理的染色体
     long long int samPos; // the position of current SAM line.
     long long int reloadPos; // the position in reference that we need to reload.
     long long int lastPos = 0; // the position on last SAM line. compare lastPos with samPos to make sure the SAM is sorted.
@@ -293,12 +297,12 @@ int hisat_3n_table()
             positions->returnLine(line);
             continue;
         }
-        // limit the linePool size to save memory
-        while(positions->linePool.size() > 100000 * nThreads) {
-            this_thread::sleep_for (std::chrono::microseconds(1));
-        }
+        // // limit the linePool size to save memory
+        // while(positions->linePool.size() > 100000 * nThreads) {
+        //     this_thread::sleep_for (std::chrono::microseconds(1));
+        // }
         // if the SAM line is empty or unmapped, get the next SAM line.
-        if (!getSAMChromosomePos(line, samChromosome, samPos)) {
+        if (!getSAMChromosomePos(line, samChromosome, samPos)) {    //将samChromosome更新。如果染色体为*，返回；否则继续，
             positions->returnLine(line);
             continue;
         }
@@ -309,29 +313,45 @@ int hisat_3n_table()
             while (!positions->linePool.empty() || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
             }
+            // while (!positions->wk_f || positions->outputPositionPool_2.size() > 10000000) {
+            //     this_thread::sleep_for (std::chrono::microseconds(5));
+            // }
+            //while(doneConsumers.fetch_add(1, std::memory_order_acq_rel) + 1 == 8)
+            while (positions->linePool_3.size_approx() !=0 || positions->outputPositionPool_2.size() > 10000000) {
+                this_thread::sleep_for (std::chrono::microseconds(10000));
+            }
+            this_thread::sleep_for (std::chrono::microseconds(10000));
+            
+            //this_thread::sleep_for (std::chrono::microseconds(30000000));
+            end = std::chrono::high_resolution_clock::now();
+            duration = end - start;
+            std::cout << "####Working Code block executed in: " << duration.count() << " seconds." << std::endl;
+
             positions->appendingFinished(); //等待所有工作进程的append操作完成
 
             // 获取当前时间点
             start = std::chrono::high_resolution_clock::now();
-            std::cout<<"begin moveallto output;  positiong->chr="<<positions->chromosome<<"   now samChr="<<samChromosome<<std::endl;
+            std::cout<<std::endl<<"==================begin moveallto output;  positiong->chr="<<positions->chromosome<<"   now samChr="<<samChromosome<<std::endl;
             //positions->output_thread_working=false; //先暂停输出线程
             positions->moveAllToOutput();   //性能瓶颈
 
             end = std::chrono::high_resolution_clock::now();
             duration = end - start;
-            std::cout << "Code block executed in: " << duration.count() << " seconds." << std::endl;
+            std::cout << "####Moving Code block executed in: " << duration.count() << " seconds." << std::endl;
 
 
             start = std::chrono::high_resolution_clock::now();
 
             //positions->output_thread_working=true;  //重新启动输出线程
             positions->loadNewChromosome(samChromosome);    //性能瓶颈
+            
+            // positions->set_worker_false();  //开始干活
 
             end = std::chrono::high_resolution_clock::now();
             duration = end - start;
-            std::cout << "Code block executed in: " << duration.count() << " seconds." << std::endl;
+            std::cout << "####Loding Code block executed in: " << duration.count() << " seconds." << std::endl;
 
-
+            start = std::chrono::high_resolution_clock::now();
             reloadPos = loadingBlockSize;
             lastPos = 0;
         }
@@ -340,6 +360,11 @@ int hisat_3n_table()
             while (!positions->linePool.empty() || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
             }
+            // while (!positions->wk_f  || positions->outputPositionPool_2.size() > 10000000) {
+            //     this_thread::sleep_for (std::chrono::microseconds(1));
+            // }
+            this_thread::sleep_for (std::chrono::microseconds(20000));
+
             positions->appendingFinished();
 
             std::cout<<"begin move block to output"<<std::endl;
@@ -355,7 +380,8 @@ int hisat_3n_table()
             cerr << "The input alignment file is not sorted. Please use sorted SAM file as alignment file." << endl;
             throw 1;
         }
-        positions->linePool.push(line);
+        positions->linePool_3.enqueue(line);
+        //positions->linePool.push(line);
         lastPos = samPos;
     }
     //}
@@ -370,6 +396,13 @@ int hisat_3n_table()
     while (!positions->linePool.empty()) {
         this_thread::sleep_for (std::chrono::microseconds(100));
     }
+    // while (!positions->wk_f ) {
+    //     this_thread::sleep_for (std::chrono::microseconds(100));
+    // }
+    while (positions->linePool_3.size_approx() !=0 || positions->outputPositionPool_2.size() > 10000000) {
+        this_thread::sleep_for (std::chrono::microseconds(100000));
+    }
+    this_thread::sleep_for (std::chrono::microseconds(10000));
     // make sure all workers finished their appending work.
     positions->appendingFinished();
     // move all position to outputPool

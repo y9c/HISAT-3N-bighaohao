@@ -70,8 +70,19 @@ public:
     char strand; // +(REF) or -(REF-RC)
     string convertedQualities; // each char is a mapping quality on this position for converted base.
     string unconvertedQualities; // each char is a mapping quality on this position for unconverted base.
+    bool convertedQualities_flag;
+    bool unconvertedQualities_flag;
     vector<uniqueID> uniqueIDs; // each value represent a readName which contributed the base information.
                               // readNameIDs is to make sure no read contribute 2 times in same position.
+    //更改为deque以减少emplace操作用时
+    //std::deque<uniqueID> uniqueIDs;
+    /*Position 类的主要用途是存储参考基因组上某个位置的相关信息，包括：
+    染色体名称。
+    位置坐标。
+    链的方向。
+    转换和未转换碱基的映射质量。
+    贡献该位置信息的 reads 的唯一标识符。*/
+
 
     void initialize() {
         chromosome.clear();
@@ -80,6 +91,8 @@ public:
         convertedQualities.clear();
         unconvertedQualities.clear();
         vector<uniqueID>().swap(uniqueIDs);
+        //uniqueIDs.reserve(); // 内存预分配 1000 个元素的内存
+        //std::deque<uniqueID>().swap(uniqueIDs); // 清空 deque
     }
 
     Position(){
@@ -150,11 +163,11 @@ public:
         return start;  // 返回大于等于 readNameID 的最小索引
     }
 
-
     /**
      * with a input readNameID, add it into readNameIDs.
      * if the input readNameID already exist in readNameIDs, return false.
      */
+    //
     bool appendReadNameID(PosQuality& InBase, Alignment& InAlignment) {
         int idCount = uniqueIDs.size();
         if (idCount == 0 || InAlignment.readNameID > uniqueIDs.back().readNameID) {
@@ -189,15 +202,17 @@ public:
             return false;
         } else {
             uniqueIDs.emplace(uniqueIDs.begin()+index, InAlignment.readNameID, InBase.converted, InBase.qual);
+            //std::cout<<uniqueIDs.size()<<std::endl;
             return true;
-        }
+        }    //此处性能开销极大，vector插入操作
     }
 
     /**
      * append the SAM information into this position.
      */
+    //用时巨大函数
     void appendBase (PosQuality& input, Alignment& a) {
-        mutex_.lock();
+        mutex_.lock();      //用时大，一个类只有一个锁？
         if (appendReadNameID(input,a)) {
             if (input.converted) {
                 convertedQualities += input.qual;
@@ -230,6 +245,7 @@ public:
     moodycamel::ReaderWriterQueue<Position*> outputPositionPool_3;
 
     bool working;
+    bool output_thread_working; //输出线程是否工作
     mutex mutex_;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
     ifstream refFile;
@@ -241,6 +257,7 @@ public:
 
     Positions(string inputRefFileName, int inputNThreads, bool inputAddedChrName, bool inputRemovedChrName) {
         working = true;
+        output_thread_working=true;
         nThreads = inputNThreads;
         addedChrName = inputAddedChrName;
         removedChrName = inputRemovedChrName;
@@ -340,6 +357,7 @@ public:
      * Scan the reference file. Record each chromosome and its position in file.
      */
     void LoadChromosomeNamesPos() {
+        std::cout<<"loadchr"<<std::endl;
         string line;
         while (refFile.good()) {
             getline(refFile, line);
@@ -360,6 +378,41 @@ public:
         Position* newPos;
         // check the base one by one
         char* b;
+        // Position* newPos_[line.size()];
+        // for(int i = 0; i < line.size(); i++)
+        // {
+        //     getFreePosition(newPos_[i]);
+        // }
+
+        // #pragma omp parallel for num_threads(2)
+        // for(int i = 0; i < line.size(); i++)
+        // {
+        //     newPos_[i]->set(chromosome, location+i);
+        // }
+
+        // for(int i = 0; i < line.size(); i++)
+        // {
+        //     b = &line[i];
+        //     if (CG_only) {
+        //         if (lastBase == 'C' && *b == 'G') {
+        //             refPositions.back()->set('+');
+        //             newPos_[i]->set('-');
+        //         }
+        //     } else {
+        //         if (*b == convertFrom) {
+        //             newPos_[i]->set('+');
+        //         } else if (*b == convertFromComplement) {
+        //             newPos_[i]->set('-');
+        //         }
+        //     }
+        //     refPositions.push_back(newPos_[i]);
+        //     lastBase = *b;
+        // }
+
+        // location += line.size();
+
+
+
         for (int i = 0; i < line.size(); i++) {
             getFreePosition(newPos);
             newPos->set(chromosome, location+i);
@@ -459,7 +512,7 @@ public:
         }
         tableFile.close();
     }
-
+ 
     /**
      * move the position which position smaller than refCoveredPosition - loadingBlockSize, output it.
      */
@@ -512,10 +565,10 @@ public:
                     localFreePool.push(refPositions[index]);
                 } 
                 else {
-                vector<uniqueID>().swap(refPositions[index]->uniqueIDs);
+                    vector<uniqueID>().swap(refPositions[index]->uniqueIDs);
                     //outputPositionPool_2.push(refPositions[index]); 有序步骤放到最后
+                }
             }
-        }
             int thread_id = omp_get_thread_num(); 
             //// 合并局部的 freePositionPool 到全局的 freePositionPool_2
             queueMutex.lock();
@@ -565,6 +618,7 @@ public:
         string line;
         lastBase = 'X';
         location = 0;
+        std::cout<<"using loadnewChr now free pool="<<freePositionPool_2.size()<<std::endl;
         while (refFile.good()) {
             getline(refFile, line);
             if (line.front() == '>') { // this line is chromosome name
@@ -575,7 +629,8 @@ public:
                 for (int i = 0; i < line.size(); i++) {
                     line[i] = toupper(line[i]);
                 }
-                appendRefPosition(line);
+                //std::cout<<line.size()<<std::endl;
+                appendRefPosition(line);    //性能瓶颈          line='ACATTGTTGCCAAATATAAATAGTGAGAAAAGCATTTTATATTCCCTAAGGCTCCTTGAC'
                 if (location >= refCoveredPosition) {
                     return;
                 }
@@ -614,28 +669,32 @@ public:
     /**
      * add position information from Alignment into ref position.
      */
+    //将 newAlignment（一个 Alignment 对象）的位置信息添加到 refPositions 中
     void appendPositions(Alignment& newAlignment) {
+        //检查是否是有效的比对
         if (!newAlignment.mapped || newAlignment.bases.empty()) {
             return;
         }
+        //计算比对的起始位置
         long long int startPos = newAlignment.location; // 1-based position
         // find the first reference position in pool.
-        int index = getIndex(newAlignment.location);
+        int index = getIndex(newAlignment.location);    //获取参考位置索引
 
-        for (int i = 0; i < newAlignment.sequence.size(); i++) {
+        for (int i = 0; i < newAlignment.sequence.size(); i++) {    //遍历读取序列的每个碱基
             PosQuality* b = &newAlignment.bases[i];
             if (b->remove) {
                 continue;
             }
 
-            Position* pos = refPositions[index+b->refPos];
-            assert (pos->location == startPos + b->refPos);
+            Position* pos = refPositions[index+b->refPos];  //将比对位置添加到参考位置
+            //assert (pos->location == startPos + b->refPos); debug模式下保留，release可去除
 
             if (pos->strand == '?') {
                 // this is for CG-only mode. read has a 'C' or 'G' but not 'CG'.
                 continue;
             }
-            pos->appendBase(newAlignment.bases[i], newAlignment);
+            pos->appendBase(newAlignment.bases[i], newAlignment); 
+            //调用 Position 类的 appendBase 方法，将碱基信息添加到参考位置,主要耗时
         }
     }
 
@@ -683,6 +742,7 @@ public:
     /**
      * return the position to freePositionPool.
      */
+    // move all to output 主线程调用
     void returnPosition(Position* pos) {
         pos->initialize();
         //freePositionPool.push(pos);
@@ -693,23 +753,24 @@ public:
      * this is the working function.
      * it take the SAM line from linePool, parse it.
      */
+    //工作线程：从linepool池中抓取数据并处理
     void append(int threadID) {
         string* line;
         Alignment newAlignment;
 
         while (working) {
-            workerLock[threadID]->lock();
+            workerLock[threadID]->lock();       //无用时
             if(!linePool.popFront(line)) {
-                workerLock[threadID]->unlock();
-                this_thread::sleep_for (std::chrono::nanoseconds(1));
+                workerLock[threadID]->unlock();     
+                this_thread::sleep_for (std::chrono::nanoseconds(1));   //用时4%
                 continue;
             }
             while (refPositions.empty()) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
             }
-            newAlignment.parse(line);
-            returnLine(line);
-            appendPositions(newAlignment);
+            newAlignment.parse(line);   //用时较少  9%
+            returnLine(line);   //解析完成返还资源到freepool    %2
+            appendPositions(newAlignment);  //用时较多 30%
             workerLock[threadID]->unlock();
         }
     }

@@ -252,6 +252,7 @@ public:
     // 更改为无锁队列
     moodycamel::ReaderWriterQueue<Position*> outputPositionPool_3;
     moodycamel::ConcurrentQueue<string*> linePool_3;
+    moodycamel::ConcurrentQueue<string*> freeLinePool_3;
 
     bool working;
     bool output_thread_working; //输出线程是否工作
@@ -522,7 +523,7 @@ public:
                           << to_string(pos->unconvertedQualities.size()) << '\n';
                 returnPosition(pos);
             } else {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+                this_thread::sleep_for (std::chrono::microseconds(10000));
             }
         }
         tableFile.close();
@@ -719,7 +720,8 @@ public:
      * get a string pointer from freeLinePool, if freeLinePool is empty, make a new string pointer.
      */
     void getFreeStringPointer(string*& newLine) {
-        if (freeLinePool.popFront(newLine)) {
+       // if (freeLinePool.popFront(newLine)) {
+        if (freeLinePool_3.try_dequeue(newLine)) {
             return;
         } else {
             newLine = new string();
@@ -753,7 +755,8 @@ public:
      */
     void returnLine(string* line) {
         line->clear();
-        freeLinePool.push(line);
+        //freeLinePool.push(line);
+        freeLinePool_3.enqueue(line);
     }
 
     /**
@@ -796,25 +799,78 @@ public:
         string* line;
         Alignment newAlignment;
 
+        string* lines[1000]; //size大小
+        // int work_block_size=100;
+        // int count=0;
+        
+        // //源代码
+        // while (working) {
+        //     workerLock[threadID]->lock();       //无用时
+        //     //if(!linePool.popFront(line)) {
+        //     if(!linePool_3.try_dequeue(line)) {     //成功返回true ！ -> false
+        //         //worker_finished[threadID]=true;
+        //         workerLock[threadID]->unlock();         //进入此步则表示已使用完
+        //         this_thread::sleep_for (std::chrono::nanoseconds(1000));   //用时4%
+        //         //wk_f=true;
+        //         continue;
+        //     }
+        //     while (refPositions.empty()) {
+        //         this_thread::sleep_for (std::chrono::microseconds(1000));
+        //     }
+        //     newAlignment.parse(line);   //用时较少  9%
+        //     returnLine(line);   //解析完成返还资源到freepool    %2
+        //     appendPositions(newAlignment);  //用时较多 30%
+        //     workerLock[threadID]->unlock();
+        // }
+
+        // while (working) {
+        //     workerLock[threadID]->lock();
+        //     //避免竞争，块处理   r  
+        //     while(count < work_block_size && !linePool_3.try_dequeue(line))
+        //     {
+        //         lines[count]=line;
+        //         count++;
+        //     }
+        //     // 如果队列空了或者达到块大小:则下一步
+        //     while (refPositions.empty()) {
+        //         this_thread::sleep_for (std::chrono::microseconds(1000));
+        //     }
+        //     for(int i=0;i<count;i++)
+        //     {
+        //         newAlignment.parse(lines[i]);   //用时较少  9%
+        //         returnLine(lines[i]);   //解析完成返还资源到freepool    %2
+        //         appendPositions(newAlignment);  //用时较多 30%
+        //     }
+        //     count=0;
+        //     workerLock[threadID]->unlock();
+        // }
+
+        std::size_t temp_count=0;
+        int bulk_size=1000;
         while (working) {
             workerLock[threadID]->lock();       //无用时
-            //if(!linePool.popFront(line)) {
-            if(!linePool_3.try_dequeue(line)) {     //成功返回true ！ -> false
-                //worker_finished[threadID]=true;
-                workerLock[threadID]->unlock();         //进入此步则表示已使用完
-                this_thread::sleep_for (std::chrono::nanoseconds(1000));   //用时4%
-                //wk_f=true;
+            //从队列中抓取
+            temp_count= linePool_3.try_dequeue_bulk(lines, bulk_size);
+            //std::cout<<temp_count<<std::endl;
+            if(temp_count==0)
+            {
+                workerLock[threadID]->unlock(); 
+                this_thread::sleep_for (std::chrono::nanoseconds(10000));   //用时4%
                 continue;
             }
             while (refPositions.empty()) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+                this_thread::sleep_for (std::chrono::microseconds(10000));
             }
-            newAlignment.parse(line);   //用时较少  9%
-            returnLine(line);   //解析完成返还资源到freepool    %2
+            for(int i=0;i<temp_count;i++)
+            {
+                newAlignment.parse(lines[i]);   //用时较少  9%
+                returnLine(lines[i]);   //解析完成返还资源到freepool    %2
             appendPositions(newAlignment);  //用时较多 30%
+            }
             workerLock[threadID]->unlock();
         }
     }
+
 };
 
 #endif //POSITION_3N_TABLE_H

@@ -117,6 +117,12 @@ public:
         location = inputLoc + 1;
     }
 
+    //  取消复制,move的时候统一赋值
+    void set_without_string(long long int inputLoc)
+    {
+        location = inputLoc + 1;
+    }
+
     void set(char inputStrand) {
         strand = inputStrand;
     }
@@ -423,7 +429,8 @@ public:
 
         for (int i = 0; i < line.size(); i++) {
             getFreePosition(newPos);
-            newPos->set(chromosome, location+i);
+            //newPos->set(chromosome, location+i);
+            newPos->set_without_string(location+i);
             b = &line[i];
             if (CG_only) {
                 if (lastBase == 'C' && *b == 'G') {
@@ -589,10 +596,12 @@ public:
             queueMutex.unlock();
         }
 
+        string temp_chm=chromosome; //暂存
         //下面这个串行
         for (index = 0; index < tempsize; index++) {
             if (!temp_empty_flag[index]) {              //大部分是空，小部分是非空
                 //outputPositionPool_2.push(refPositions[index]);
+                refPositions[index]->chromosome=temp_chm;
                 outputPositionPool_3.enqueue(refPositions[index]);
                 count++;
             } 

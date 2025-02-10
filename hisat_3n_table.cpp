@@ -411,20 +411,30 @@ int hisat_3n_table()
     while (!positions->outputPositionPool_2.empty()) {
         this_thread::sleep_for (std::chrono::microseconds(100));
     }
+    auto front = positions->outputPositionPool_3.peek();
+    std::cout<<front<<std::endl;
+    while(front!=nullptr)
+    {   
+        front = positions->outputPositionPool_3.peek();
+        this_thread::sleep_for (std::chrono::microseconds(100000));
+    }
+    std::cout<<front<<std::endl;
+
+    // 系统操作，直接注释
     // stop all thread and clean
-    while(positions->freeLinePool.popFront(line)) {
-        delete line;
-    }
-    while(positions->freeLinePool_3.try_dequeue(line)) {
-        delete line;
-    }
+    // while(positions->freeLinePool.popFront(line)) {
+    //     delete line;
+    // }
+    // while(positions->freeLinePool_3.try_dequeue(line)) {
+    //     delete line;
+    // }
     positions->working = false;
     for (int i = 0; i < nThreads; i++){
         workers[i]->join();
         delete workers[i];
     }
     outputThread.join();
-    delete positions;
+    //delete positions;
     return 0;
 }
 

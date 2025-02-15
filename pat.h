@@ -40,6 +40,7 @@
 #include "ds.h"
 #include "read.h"
 #include "util.h"
+#include "concurrentqueue.h"
 
 extern bool threeN;
 /**
@@ -133,6 +134,12 @@ struct PatternParams {
 };
 
 /**
+ * 封装了一个同步的模式源；通常是一个文件。
+ * 在返回读取内容之前， optionally 会反转读取的模式和质量字符串，
+ * 尽管这通常由具体的子类更高效地完成。具体的子类应该通过
+ * 调用 lock() 和 unlock() 来界定关键部分。
+ */
+/**
  * Encapsulates a synchronized source of patterns; usually a file.
  * Optionally reverses reads and quality strings before returning them,
  * though that is usually more efficiently done by the concrete
@@ -155,6 +162,7 @@ public:
 
 	virtual ~PatternSource() { }
 
+	//每当这个 PatternSource 被新的 WrappedPatternSourcePerThread 包装时，调用此函数。这样有助于我们跟踪锁是否会发生争用。
 	/**
 	 * Call this whenever this PatternSource is wrapped by a new
 	 * WrappedPatternSourcePerThread.  This helps us keep track of
@@ -171,7 +179,7 @@ public:
 	 *
 	 * Returns true iff a pair was parsed succesfully.
 	 */
-	virtual bool nextReadPair(
+	virtual bool nextReadPair(  //主要的成员函数，用于分发模式。只有在一对模式成功解析后，才返回 true。
 		Read& ra,
 		Read& rb,
 		TReadId& rdid,
@@ -190,7 +198,8 @@ public:
 		TReadId& endid,
 		bool& success,
 		bool& done);
-
+	//在生物信息学中，测序数据通常以各种格式存储（例如FASTQ格式）。配对末端测序的输入数据可能是来自两个文件（例如，read1 和 read2）。
+	//nextReadPairImpl 处理 配对末端读取（read pair），即一次返回一对相关的读取。
 	/**
 	 * Implementation to be provided by concrete subclasses.  An
 	 * implementation for this member is only relevant for formats that
@@ -198,7 +207,7 @@ public:
 	 * single input source.  If paired-end input is given as a pair of
 	 * parallel files, this member should throw an error and exit.
 	 */
-	virtual bool nextReadPairImpl(
+	virtual bool nextReadPairImpl(	//Impl 是“Implementation”（实现）的缩写
 		Read& ra,
 		Read& rb,
 		TReadId& rdid,
@@ -207,6 +216,7 @@ public:
 		bool& done,
 		bool& paired) = 0;
 
+	//nextReadImpl 处理 单端读取，即每次返回一个读取
 	/**
 	 * Implementation to be provided by concrete subclasses.  An
 	 * implementation for this member is only relevant for formats
@@ -276,6 +286,7 @@ protected:
 	MUTEX_T mutex;
 };
 
+//配对末端读取（以及可能的单端读取）同步数据源的抽象父类
 /**
  * Abstract parent class for synhconized sources of paired-end reads
  * (and possibly also single-end reads).
@@ -416,6 +427,10 @@ protected:
 	const EList<PatternSource*>* src_; /// PatternSources for paired-end reads
 };
 
+//在配对末端测序中，测序仪会同时读取一个 DNA 片段的两端，得到两个序列。每个 DNA 片段被从两端测序，因此通常会有两条数据（一个是左端读取，一个是右端读取）
+//未配对读取是指仅从 DNA 片段的一端进行测序，只有单个读取，而没有对应的另一端读取
+//配对末端读取和未配对读取 同时装载
+//Dual 的意思是指 两个 或 双重
 /**
  * Encapsulates a synchronized source of both paired-end reads and
  * unpaired reads, where the paired-end must come from parallel files.
@@ -506,6 +521,12 @@ protected:
 };
 
 /**
+ * 封装单个线程与PatternSource的交互。
+ * 最值得注意的是，这个类持有PatternSource将写入序列的缓冲区。
+ * 这个类*不是*线程安全的，因为它不需要是线程安全的，因为每个线程有一个实例。
+ * PatternSource是线程安全的。
+ */
+/**
  * Encapsulates a single thread's interaction with the PatternSource.
  * Most notably, this class holds the buffers into which the
  * PatterSource will write sequences.  This class is *not* threadsafe
@@ -524,7 +545,7 @@ public:
 	/**
 	 * change 3N plan for both mate1 and mate2
 	 */
-	void changePlan3N(int mappingCycle) {
+	void changePlan3N(int mappingCycle) {	//将读入数据转化为3N模式（碱基对变换模式）基于当前的threeN_cycle和newMappingCycle来改变patFw序列
         buf1_.changePlan3N(mappingCycle);
         buf2_.changePlan3N(3-mappingCycle);
 	}
@@ -532,7 +553,7 @@ public:
 	/**
 	 * Read the next read pair.
 	 */
-	virtual bool nextReadPair(
+	virtual bool nextReadPair(		//本来要定义一个PatternSourcePerThread的nextReadPair，但是wrappedPatternSourcePerThread函数继承了，所以只需要实现WrappedPatternSourcePerThread的readnextPair
 		bool& success,
 		bool& done,
 		bool& paired,
@@ -596,6 +617,7 @@ public:
 	}
 };
 
+//一个针对PairedPatternSource的每线程封装器，继承自PatternSourcePerThread（定义每个线程与全局唯一资源PatternSource的交互）
 /**
  * A per-thread wrapper for a PairedPatternSource.
  */
@@ -620,7 +642,7 @@ public:
 private:
 
 	/// Container for obtaining paired reads from PatternSources
-	PairedPatternSource& patsrc_;
+	PairedPatternSource& patsrc_;  //PairedPatternSource原等于PatternSource
 };
 
 /**
@@ -784,8 +806,24 @@ public:
 		assert(!fb_.isOpen());
 		open(); // open first file in the list
 		filecur_++;
+		printf("start init BufferedFilePatternSource\n");
+		read_thread =std::thread(&BufferedFilePatternSource::read_never_stop_thread,this);
+		read_thread.detach();
 	}
 
+
+	//无限读结构体
+	struct temp_read
+	{
+		Read r;
+		TReadId rdid;
+		TReadId endid;
+		bool success;
+		bool done;
+	};
+	std::thread read_thread;  // 声明一个线程对象
+	moodycamel::ConcurrentQueue<temp_read*> read_queue;
+	moodycamel::ConcurrentQueue<temp_read*> temp_read_pool;
 	virtual ~BufferedFilePatternSource() {
 		if(fb_.isOpen()) fb_.close();
 	}
@@ -795,7 +833,7 @@ public:
 	 * read in the list of read files.  This function gets called by
 	 * all the search threads, so we must handle synchronization.
 	 */
-	virtual bool nextReadImpl(
+	virtual bool nextReadImpl(			//函数调用流最后一部分
 		Read& r,
 		TReadId& rdid,
 		TReadId& endid,
@@ -803,23 +841,104 @@ public:
 		bool& done)
 	{
 		// We'll be manipulating our file handle/filecur_ state
-		lock();
-		while(true) {
-			do { read(r, rdid, endid, success, done); }
-			while(!success && !done);
-			if(!success && filecur_ < infiles_.size()) {
-				assert(done);
-				open();
-				resetForNextFile(); // reset state to handle a fresh file
-				filecur_++;
-				continue;
+		// lock();
+		// while(true) {
+		// 	do { read(r, rdid, endid, success, done); }
+		// 	while(!success && !done);
+		// 	if(!success && filecur_ < infiles_.size()) {
+		// 		assert(done);
+		// 		open();	//函数来打开下一个文件。
+		// 		resetForNextFile(); // reset state to handle a fresh file
+		// 		filecur_++;	//以指向下一个文件。
+		// 		continue;
+		// 	}
+		// 	break;
+		// }
+		// assert(r.repOk());
+		// // Leaving critical region
+		// unlock();
+
+		// 下面是修改逻辑
+		temp_read* tr2;
+		bool if_get_read=false;
+		while(true)
+		{	
+			if_get_read=read_queue.try_dequeue(tr2);	//读取操作
+			if(if_get_read)	//成功读取
+			{	
+				r=tr2->r;
+				rdid = tr2->rdid;
+				endid = tr2->endid;
+				success = tr2->success;
+				done =tr2->done;
+				temp_read_pool.enqueue(tr2);
+				break;
 			}
-			break;
 		}
-		assert(r.repOk());
-		// Leaving critical region
-		unlock();
 		return success;
+	}
+
+
+	void read_never_stop_thread()
+	{	
+		//temp_read = new
+
+		for(int i=0;i<400000;i++)	
+		{
+			temp_read* pt = new temp_read;
+			temp_read_pool.enqueue(pt);
+		}
+
+		//temp_read* temp_read_1[100];
+		int block_size=1000;
+		int getting_block_size;
+		while(true)
+		{	
+			temp_read* temp_read_1[1000];
+			
+			// 从资源池中得到
+			getting_block_size=temp_read_pool.try_dequeue_bulk(temp_read_1,block_size);
+
+			//getting_block_size过小，可能池中大小较小
+			if(getting_block_size<32)
+			{
+				if(read_queue.size_approx()<300000)
+				{
+					for(int i=0;i<10000;i++)	
+					{
+						temp_read* pt = new temp_read;
+						temp_read_pool.enqueue(pt);
+					}
+				}
+			}
+
+
+			while(!getting_block_size){getting_block_size=temp_read_pool.try_dequeue_bulk(temp_read_1,block_size);}
+
+			//读取
+			for(int i=0;i<getting_block_size;i++)
+			{
+				do {
+					read(temp_read_1[i]->r, temp_read_1[i]->rdid, temp_read_1[i]->endid, temp_read_1[i]->success, temp_read_1[i]->done);
+				}
+				while (!temp_read_1[i]->success && !temp_read_1[i]->done);
+
+				if (!temp_read_1[i]->success && filecur_ < infiles_.size()) {
+					assert(temp_read_1[i]->done);
+					open();
+					resetForNextFile();  // reset state to handle a fresh file
+					filecur_++;
+					//printf("=============read changing============\n");
+					continue;
+				}
+
+				// if (temp_read_1[i]->rdid % 1000000 == 0) {
+				// 	printf("read====rdid=%d,filecur_=%d gett_blcok=%d\n", temp_read_1[i]->rdid, filecur_,getting_block_size);
+				// }
+			}
+
+			read_queue.enqueue_bulk(temp_read_1,getting_block_size);	//已读放入到队列中
+		}
 	}
 	
 	/**
@@ -1240,7 +1359,7 @@ public:
 	}
 
 protected:
-
+	// 最终读取
 	/// Read another pattern from a FASTA input file
 	virtual bool read(
 		Read& r,
@@ -1364,7 +1483,7 @@ private:
 	                    /// the pat id to output (so it resets to 0 for
 	                    /// each new sequence)
 };
-
+// 最终read执行类
 /**
  * Read a FASTQ-format file.
  * See: http://maq.sourceforge.net/fastq.shtml

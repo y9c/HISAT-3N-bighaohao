@@ -37,7 +37,8 @@
 #include <ngs/Read.hpp>
 
 #endif
-
+#include <chrono>
+#include <thread>
 using namespace std;
 
 /**
@@ -109,16 +110,16 @@ bool PatternSource::nextReadPair(
 /**
  * The main member function for dispensing patterns.
  */
-bool PatternSource::nextRead(
+bool PatternSource::nextRead(		//主要调用函数liu 分发模式的主要成员函数。
 	Read& r,
 	TReadId& rdid,
 	TReadId& endid,
 	bool& success,
 	bool& done)
 {
-	// nextPatternImpl does the reading from the ultimate source;
-	// it is implemented in concrete subclasses
-	nextReadImpl(r, rdid, endid, success, done);
+	// nextPatternImpl does the reading from the ultimate source; // nextPatternImpl 从最终数据源中读取数据；
+	// it is implemented in concrete subclasses 它在具体的子类中实现
+	nextReadImpl(r, rdid, endid, success, done);	//nextReadImpl，读取的具体最终实现方法  每次调用需要上锁
 	if(success) {
 		// Construct the reversed versions of the fw and rc seqs
 		// and quals
@@ -135,20 +136,23 @@ bool PatternSource::nextRead(
  * Get the next paired or unpaired read from the wrapped
  * PairedPatternSource.
  */
-bool WrappedPatternSourcePerThread::nextReadPair(
+bool WrappedPatternSourcePerThread::nextReadPair(	//每个线程调用这个 
 	bool& success,
 	bool& done,
 	bool& paired,
 	bool fixName)
-{
-	PatternSourcePerThread::nextReadPair(success, done, paired, fixName);
+{	
+	//第一个nextReadPair没什么用，sucess必为true
+	PatternSourcePerThread::nextReadPair(success, done, paired, fixName);	//封装了单个线程与 PatternSource 的交互。最显著的是，这个类保存了 PatternSource 将写入序列的缓冲区。这个类 不是 线程安全的，因为每个线程都有一个实例。PatternSource 是线程安全的。
 	ASSERT_ONLY(TReadId lastRdId = rdid_);
 	buf1_.reset();
 	buf2_.reset();
-	patsrc_.nextReadPair(buf1_, buf2_, rdid_, endid_, success, done, paired, fixName);
+	//下面这个是主要交互函数 PairedPatternSource同 PatternSource 全局唯一
+	//实际指向PairedDualPatternSource 继承自 PairedPatternSource
+	patsrc_.nextReadPair(buf1_, buf2_, rdid_, endid_, success, done, paired, fixName);	//函数主要调用流 多线程交互
 	assert(!success || rdid_ != lastRdId);
 	return success;
-}
+}	//主要实现函数netreadpair 函数调用流
 
 /**
  * The main member function for dispensing pairs of reads or
@@ -206,24 +210,30 @@ bool PairedSoloPatternSource::nextReadPair(
 	done = (cur == src_->size());
 	return false;
 }
-
+//PairedDualPatternSource 封装了一个同步的来源，既包含配对端读取，也包含未配对的读取，其中配对端读取必须来自并行的文件。
+//通常用于从成对的读取数据源中获取一对读取，或从单独的读取源中获取一个未配对的读取。
+/**
+ * 从读取文件中获取下一个读取对或单独的读取。
+ * 如果 ra 和 rb 含有一对新的读取，则返回 true；
+ * 如果 ra 含有新的未配对读取，则返回 false。
+ */
 /**
  * The main member function for dispensing pairs of reads or
  * singleton reads.  Returns true iff ra and rb contain a new
  * pair; returns false if ra contains a new unpaired read.
  */
-bool PairedDualPatternSource::nextReadPair(
-	Read& ra,
-	Read& rb,
+bool PairedDualPatternSource::nextReadPair(			//主要调用函数流 PairedDualPatternSource::nextReadPair
+	Read& ra,	//读a
+	Read& rb,	//读b
 	TReadId& rdid,
 	TReadId& endid,
 	bool& success,
 	bool& done,
-	bool& paired,
+	bool& paired, //表示读取是否配对的布尔值。如果是配对读取，值为 true，否则为 false
 	bool fixName)
 {
 	// 'cur' indexes the current pair of PatternSources
-	uint32_t cur;
+	uint32_t cur;		//‘cur’索引当前的PatternSources对
 	{
 		lock();
 		cur = cur_;
@@ -231,24 +241,32 @@ bool PairedDualPatternSource::nextReadPair(
 	}
 	success = false;
 	done = true;
+	//printf("using PairedDualPatternSource::nextReadPair cur=%d srca_->size()=%d\n",cur,srca_->size());
+	// 实际上单文件读取，cur一直是0，srca_->size一直是1
 	while(cur < srca_->size()) {
-		if((*srcb_)[cur] == NULL) {
+		if((*srcb_)[cur] == NULL) {	// 如果 srcb_ 中当前配对读取为空（单端读取）
 			paired = false;
 			// Patterns from srca_ are unpaired
 			do {
-				(*srca_)[cur]->nextRead(ra, rdid, endid, success, done);
-			} while(!success && !done);
+				(*srca_)[cur]->nextRead(ra, rdid, endid, success, done);	//主要调用函数流 每次读都要上锁
+				if(rdid%1000000==0)
+					printf("rdid = %d,endid=%d,succ=%d,done=%d,cur=%d,srca_->size()=%d\n",rdid,endid,success,done,cur,srca_->size());
+			} while(!success && !done);	//// 读取成功且未完成时，重复读取
 			if(!success) {
+				printf("==================nosucces=====================\n");
 				assert(done);
 				lock();
-				if(cur + 1 > cur_) cur_++;
-				cur = cur_; // Move on to next PatternSource
+				if(cur + 1 > cur_) cur_++; //如果当前索引超过了 `cur_`，则更新 `cur_`
+				cur = cur_; // Move on to next PatternSource 移动到下一个配对读取
 				unlock();
-				continue; // on to next pair of PatternSources
+				continue; // on to next pair of PatternSources 继续处理下一个配对读取
 			}
+			// 填充读取信息
 			ra.rdid = rdid;
 			ra.endid = endid;
 			ra.mate  = 0;
+			//printf("susccess read, rdid=%d,endid=%d\n",rdid,endid);
+			//std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			return success;
 		} else {
 			paired = true;
@@ -732,7 +750,7 @@ int parseQuals(
 }
 
 /// Read another pattern from a FASTA input file
-bool FastaPatternSource::read(
+bool FastaPatternSource::read(			
 	Read& r,
 	TReadId& rdid,
 	TReadId& endid,
@@ -865,7 +883,7 @@ bool FastaPatternSource::read(
 }
 
 /// Read another pattern from a FASTQ input file
-bool FastqPatternSource::read(
+bool FastqPatternSource::read(			//真正的最后方法
 	Read& r,
 	TReadId& rdid,
 	TReadId& endid,

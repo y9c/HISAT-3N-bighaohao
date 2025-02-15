@@ -22,7 +22,7 @@
 #include <getopt.h>
 #include "position_3n_table.h"
 #include <chrono>
-
+#include <set>  //用于测试
 using namespace std;
 
 string alignmentFileName;
@@ -209,6 +209,8 @@ static void parseOptions(int argc, const char **argv) {
  * give a SAM line, extract the chromosome and position information.
  * return true if the SAM line is mapped. return false if SAM line is not maped.
  */
+//它会提取第三列（染色体名称）和第四列（位置）。如果染色体名称为 "*"，表示没有匹配的染色体，因此返回 false；否则返回 true。
+//SRR23538290.55906477_TCCTAGTCTC 16      19      3963891 60      29M324N30M      *       0       0       CAACAACTCATAATTCACAATCTCTAAAACCACAAACTCCAAAATACCAAAAATATTCT     FFFFFFFFFFFFFFFFFFFFFFFF:F:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFAS:i:0  NH:i:1  XM:i:0  NM:i:0  MD:Z:2G1G0G6G12G0G0G0G11G0G0G0G1G2G2G2G4        YZ:A:-  Yf:i:16 Zf:i:0  XN:i:0  XO:i:0  XG:i:0  XS:A:-
 /**
  * 给定一行 SAM 格式的字符串，提取染色体和位置的信息。
  * 如果该行是已映射（mapped）的，返回 true；如果该行未映射（unmapped），返回 false。
@@ -285,7 +287,8 @@ int hisat_3n_table()
     long long int samPos; // the position of current SAM line.
     long long int reloadPos; // the position in reference that we need to reload.
     long long int lastPos = 0; // the position on last SAM line. compare lastPos with samPos to make sure the SAM is sorted.
-
+    
+    //std::set<std::string> encounteredChromosomes;  // 用于记录遇到的染色体，测试用
     while (alignmentFile->good()) {
         positions->getFreeStringPointer(line);
         if (!getline(*alignmentFile, *line)) {
@@ -306,6 +309,9 @@ int hisat_3n_table()
             positions->returnLine(line);
             continue;
         }
+
+
+
         // if the samChromosome is different than current positions' chromosome, finish all SAM line.
         // then load a new reference chromosome.
         if (samChromosome != positions->chromosome) {   //染色体改变
@@ -319,7 +325,7 @@ int hisat_3n_table()
             //while(doneConsumers.fetch_add(1, std::memory_order_acq_rel) + 1 == 8)
             while (positions->linePool_3.size_approx() !=0 || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(10000));
-            }
+            } 
             // // size_approx可能会引发问题，除非linepool稳定下来，否则返回的值不一定为真
             // this_thread::sleep_for (std::chrono::microseconds(10000));
             
@@ -331,7 +337,7 @@ int hisat_3n_table()
                 this_thread::sleep_for (std::chrono::microseconds(100000));
             }
 
-            
+
             //this_thread::sleep_for (std::chrono::microseconds(30000000));
             end = std::chrono::high_resolution_clock::now();
             duration = end - start;

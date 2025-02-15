@@ -3340,6 +3340,7 @@ static inline void printEEScoreMsg(
  *   + If not identical, continue
  * -
  */
+//工作线程+主线程
 static void multiseedSearchWorker_hisat2(void *vp) {
 	int tid = *((int*)vp);
 	printf("start multiseedSearchWorker_hisat2 %d\n",tid);
@@ -3382,8 +3383,8 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 	// problems, or generally characterize performance.
 	
 	//const BitPairReference& refs   = *multiseed_refs;
-	auto_ptr<PatternSourcePerThreadFactory> patsrcFact(createPatsrcFactory(patsrc, tid));
-	auto_ptr<PatternSourcePerThread> ps(patsrcFact->create());
+	auto_ptr<PatternSourcePerThreadFactory> patsrcFact(createPatsrcFactory(patsrc, tid)); //PatternSourcePerThreads 的抽象父工厂
+	auto_ptr<PatternSourcePerThread> ps(patsrcFact->create());		//读取 封装了单个线程与 PatternSource 的交互 
 	
     // Instantiate an object for holding reporting-related parameters.
     if(maxSeeds == 0) {
@@ -3502,15 +3503,16 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 	rndArb.init((uint32_t)time(0));
 	int mergei = 0;
 	int mergeival = 16;
-	while(true) {
+	while(true) {			//总循环
 		bool success = false, done = false, paired = false;
-		ps->nextReadPair(success, done, paired, outType != OUTPUT_SAM);
+		ps->nextReadPair(success, done, paired, outType != OUTPUT_SAM);		//下一个读长
 		if(!success && done) {
 			break;
 		} else if(!success) {
 			continue;
 		}
 		TReadId rdid = ps->rdid();
+		//printf("now read %d %d\n",rdid,tid);
         if(nthreads > 1 && useTempSpliceSite) {
             assert_gt(tid, 0);
             assert_leq(tid, thread_rids.size());
@@ -3580,8 +3582,8 @@ static void multiseedSearchWorker_hisat2(void *vp) {
             bool gNofw3N = false;
             bool gNorc3N = false;
             // for threeN (3N) mode, we need to map the read 4 times. for regular mode, only 1 time.
-			while(retry || mappingCycle < nMappingCycle) {
-
+			while(retry || mappingCycle < nMappingCycle) {				//finishread 循环	3N跑4次
+				//printf("start once retry || mappingCycle < nMappingCycle %d\n",tid);
                 msinkwrap->resetInit_();
                 if (threeN) {
                     ps->changePlan3N(mappingCycle);
@@ -3602,7 +3604,7 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 				const size_t rdlen1 = ps->bufa().length();
 				const size_t rdlen2 = pair ? ps->bufb().length() : 0;
 				olm.bases += (rdlen1 + rdlen2);
-				msinkwrap->nextRead(
+				msinkwrap->nextRead(			//取出
                                    &ps->bufa(),
                                    pair ? &ps->bufb() : NULL,
                                    rdid,
@@ -3801,7 +3803,7 @@ static void multiseedSearchWorker_hisat2(void *vp) {
                         useRepeat = paired ? (ps->bufa().length() >= 100) && (ps->bufb().length() >= 100) :
                                          ps->bufa().length() >= 80;
                     }
-
+					//主要耗时函数
                     ret = splicedAligner.go(
                             sc,
                             pepol,
@@ -3871,7 +3873,7 @@ static void multiseedSearchWorker_hisat2(void *vp) {
                     assert_leq(prm.nUgFail,  streak[i]);
                     assert_leq(prm.nEeFail,  streak[i]);
                 }
-
+				// 锁重灾区
                 msinkwrap->finishRead(
                         NULL,
                         NULL,
@@ -3916,6 +3918,7 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 	return;
 }
 
+//每次对齐作业调用一次。设置指向共享全局数据结构的全局指针，创建每个线程的结构，然后进入搜索循环。
 /**
  * Called once per alignment job.  Sets up global pointers to the
  * shared global data structures, creates per-thread structures, then
@@ -3963,9 +3966,9 @@ static void multiseedSearch(
 		for(int i = 0; i < nthreads; i++) {
 			// Thread IDs start at 1
 			tids[i] = i+1;
-            threads[i] = new tthread::thread(multiseedSearchWorker_hisat2, (void*)&tids[i]);
+            threads[i] = new tthread::thread(multiseedSearchWorker_hisat2, (void*)&tids[i]);	//启动工作线程
 		}
-
+		printf("nthreads = %d\n,======end multiseedSearchWorker_hisat2",nthreads);
         for (int i = 0; i < nthreads; i++)
             threads[i]->join();
 
@@ -3981,7 +3984,7 @@ extern void initializeCntLut();
 extern void initializeCntBit();
 
 template<typename TStr>
-static void driver(
+static void driver(				//启用多个线程
 	const char * type,
 	const string bt2indexBases[2],
 	const string& outfile)
@@ -4230,7 +4233,7 @@ static void driver(
                 else                    khits = 10;
             }
         }
-    } else {
+    } else {			
         altdb = new ALTDB<index_t>();
         repeatdb = new RepeatDB<index_t>();
         raltdb = new ALTDB<index_t>();
@@ -4705,7 +4708,7 @@ static void driver(
 		// Do the search for all input reads
 		assert(patsrc != NULL);
 		assert(mssink != NULL);
-		multiseedSearch(
+		multiseedSearch(		//每个启动多个工作线程
                         sc,      // scoring scheme
                         tpol,
                         gpol,
@@ -4820,7 +4823,7 @@ extern "C" {
  * options, sets global configuration variables, and calls the driver()
  * function.
  */
-int hisat2(int argc, const char **argv) {
+int hisat2(int argc, const char **argv) {	//主线程入口
 	try {
 		// Reset all global state, including getopt state
 		opterr = optind = 1;

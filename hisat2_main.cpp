@@ -39,7 +39,7 @@ extern "C" {
  * per line, and will dispatch each batch of arguments one at a time to
  * bowtie.
  */
-int main(int argc, const char **argv) {
+int main(int argc, const char **argv) {	//hisat-3n 主函数
 	if(argc > 2 && strcmp(argv[1], "-A") == 0) {
 		const char *file = argv[2];
 		ifstream in;

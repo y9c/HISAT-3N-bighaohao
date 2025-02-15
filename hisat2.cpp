@@ -60,6 +60,7 @@
 #include "repeat_kmer.h"
 #include "hisat2lib/ht2.h"
 //#include "utility_3n.h"
+#include <cstdio>
 
 
 using namespace std;
@@ -3341,6 +3342,9 @@ static inline void printEEScoreMsg(
  */
 static void multiseedSearchWorker_hisat2(void *vp) {
 	int tid = *((int*)vp);
+	printf("start multiseedSearchWorker_hisat2 %d\n",tid);
+	//std::cout<<"start multiseedSearchWorker_hisat2 "<<tid<<std::endl;
+	
 
     if (threeN) {
         assert(ref3N.multiseed_gfm[0] != NULL);
@@ -4366,6 +4370,11 @@ static void driver(
 		nthreads,                // # threads
 		nthreads > 1,            // whether to be thread-safe
 		skipReads);              // first read will have this rdid
+	// 在类外创建并启动线程
+	std::cout<<"start output_thread";
+    std::thread output_thread(&OutputQueue::get_output_from_queue_2, &oq);  // 传递类实例的指针
+	// 让线程在后台执行，不等待它完成
+    //output_thread.detach();
 	{
 		Timer _t(cerr, "Time searching: ", timing);
 		// Set up penalities
@@ -4756,9 +4765,15 @@ static void driver(
                 }
             }
         }
-		oq.flush(true);
+		std::cout<<"begin flush==========="<<std::endl;
+		oq.flush(true);	//唯一一次flush
+		std::cout<<"end flush==========="<<std::endl;
 		assert_eq(oq.numStarted(), oq.numFinished());
 		assert_eq(oq.numStarted(), oq.numFlushed());
+		std::cout<<"end assert==========="<<std::endl;
+		oq.endoutput();
+		output_thread.join();
+		std::cout<<"end output===="<<std::endl;
 		delete patsrc;
 		delete mssink;
         delete ssdb;
@@ -4956,7 +4971,9 @@ int hisat2(int argc, const char **argv) {
 				cout << "Press key to continue..." << endl;
 				getchar();
 			}
-			driver<SString<char> >("DNA", bt2indexs, outfile);
+			std::cout<<"start driver"<<std::endl;
+			driver<SString<char> >("DNA", bt2indexs, outfile);			//主线程耗时函数
+			std::cout<<"end driver"<<std::endl;
 		}
 		return 0;
 	} catch(std::exception& e) {

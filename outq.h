@@ -26,7 +26,9 @@
 #include "read.h"
 #include "threading.h"
 #include "mem_ids.h"
-
+#include <atomic>
+#include "concurrentqueue.h"	//无锁队列
+// 核心
 /**
  * Encapsulates a list of lines of output.  If the earliest as-yet-unreported
  * read has id N and Bowtie 2 wants to write a record for read with id N+1, we
@@ -59,6 +61,30 @@ public:
         mutex_m()
 	{
 		assert(nthreads <= 1 || threadSafe);
+		nstarted_2.store(0, std::memory_order_release);
+		nfinished_2.store(0, std::memory_order_release);
+		nflushed_2.store(0, std::memory_order_release);
+		// 创建并启动一个线程来执行 get_output_from_queue_2
+		// std::cout<<"start"<<std::endl;
+    	// //std::thread output_thread(&OutputQueue::get_output_from_queue_2, this);
+		// std::cout<<"end"<<std::endl;
+		output_work=true;
+	}
+
+	void endoutput()
+	{
+		size_t temp_size=output_queue_2.size_approx();
+		while(true)
+		{
+			temp_size=output_queue_2.size_approx();
+			std::cout<<"tempsize="<<temp_size<<" ";
+			if(temp_size==0)
+			{	
+				std::this_thread::sleep_for(std::chrono::milliseconds(1)); //睡眠1ms
+				if(temp_size==0)
+				{output_work=false;break;}
+			}
+		}
 	}
 
 	/**
@@ -83,21 +109,27 @@ public:
 	 * Return the number of records that have been flushed so far.
 	 */
 	TReadId numFlushed() const {
-		return nflushed_;
+		long int value = nfinished_2.load(std::memory_order_acquire);
+		return value;
+		//return nflushed_;
 	}
 
 	/**
 	 * Return the number of records that have been started so far.
 	 */
 	TReadId numStarted() const {
-		return nstarted_;
+		long int value = nstarted_2.load(std::memory_order_acquire);
+		return value;
+		//return nstarted_;
 	}
 
 	/**
 	 * Return the number of records that have been finished so far.
 	 */
 	TReadId numFinished() const {
-		return nfinished_;
+		long int value = nfinished_2.load(std::memory_order_acquire);
+		return value;
+		//return nfinished_;
 	}
 
 	/**
@@ -105,9 +137,23 @@ public:
 	 */
 	void flush(bool force = false, bool getLock = true);
 
+	void get_output_from_queue_2()	//单开一个输出线程，负责从输出缓冲队列到输出缓冲区
+	{	
+		BTString temp;
+		while(output_work)
+		{
+			while(output_queue_2.try_dequeue(temp))	//成功拿到
+			{
+				obuf_.writeString(temp);
+			}
+			//睡眠
+			std::this_thread::sleep_for(std::chrono::milliseconds(1)); //睡眠1ms
+		}
+	}
+
 protected:
 
-	OutFileBuf&     obuf_;
+	OutFileBuf&     obuf_;	//这是一个缓冲输出流的包装器，能够写入字符和其他数据类型。该类不是同步的；调用者需要负责同步。
 	TReadId         cur_;
 	TReadId         nstarted_;
 	TReadId         nfinished_;
@@ -118,6 +164,11 @@ protected:
 	bool            reorder_;
 	bool            threadSafe_;
 	MUTEX_T         mutex_m;
+	moodycamel::ConcurrentQueue<BTString> output_queue_2;	//输出缓冲队列 --》输出到输出缓冲区
+	std::atomic<TReadId> nstarted_2;
+	std::atomic<TReadId> nfinished_2;
+	std::atomic<TReadId> nflushed_2;
+	bool output_work;
 };
 
 class OutputQueueMark {

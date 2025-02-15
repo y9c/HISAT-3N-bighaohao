@@ -18,15 +18,19 @@
  */
 
 #include "outq.h"
+#include <thread>  // 用于std::this_thread::sleep_for
+#include <chrono>
 
 /**
  * Caller is telling us that they're about to write output record(s) for
  * the read with the given id.
  */
 void OutputQueue::beginRead(TReadId rdid, size_t threadId) {
-	ThreadSafe t(&mutex_m, threadSafe_);
+	//ThreadSafe t(&mutex_m, threadSafe_);	//开头上锁
 	nstarted_++;
+	nstarted_2.fetch_add(1,std::memory_order_relaxed);
 	if(reorder_) {
+		ThreadSafe t(&mutex_m, threadSafe_);
 		assert_geq(rdid, cur_);
 		assert_eq(lines_.size(), finished_.size());
 		assert_eq(lines_.size(), started_.size());
@@ -42,15 +46,26 @@ void OutputQueue::beginRead(TReadId rdid, size_t threadId) {
 		}
 		started_[rdid - cur_] = true;
 		finished_[rdid - cur_] = false;
+	}									//t处理时解锁
+	if(nstarted_%1000000==0)
+	{
+		long int value =numStarted();
+		long int value2 =numFinished();
+		long int value3 =numFlushed();
+		printf("OutputQueue::beginRead nstarted=%d nstarted_2=%ld rdid=%d cur_=%d tid=%d nfinished_=%d   nfinished_2=%ld,nflush_2=%ld\n",nstarted_,value,rdid,cur_,threadId,nfinished_,value2,value3);
 	}
+	//printf("OutputQueue::beginRead nstarted=%d rdid=%d cur_=%d tid=%d\n",nstarted_,rdid,cur_,threadId);
+	// 休眠 1 秒钟
+    //std::this_thread::sleep_for(std::chrono::milliseconds(10));
 }
 
 /**
  * Writer is finished writing to 
  */
 void OutputQueue::finishRead(const BTString& rec, TReadId rdid, size_t threadId) {
-	ThreadSafe t(&mutex_m, threadSafe_);
+	//ThreadSafe t(&mutex_m, threadSafe_);
 	if(reorder_) {
+		ThreadSafe t(&mutex_m, threadSafe_);
 		assert_geq(rdid, cur_);
 		assert_eq(lines_.size(), finished_.size());
 		assert_eq(lines_.size(), started_.size());
@@ -63,9 +78,12 @@ void OutputQueue::finishRead(const BTString& rec, TReadId rdid, size_t threadId)
 		flush(false, false); // don't force; already have lock
 	} else {
 		// obuf_ is the OutFileBuf for the output file
-		obuf_.writeString(rec);
+		//obuf_.writeString(rec);	//写ref --> 写缓存
+		output_queue_2.enqueue(rec);	//先写入输出队列中
 		nfinished_++;
 		nflushed_++;
+		nfinished_2.fetch_add(1,std::memory_order_relaxed);
+		nflushed_2.fetch_add(1,std::memory_order_relaxed);
 	}
 }
 
@@ -73,18 +91,26 @@ void OutputQueue::finishRead(const BTString& rec, TReadId rdid, size_t threadId)
  * Write already-finished lines starting from cur_.
  */
 void OutputQueue::flush(bool force, bool getLock) {
+	// 获取当前时间（开始时间）
+    auto start = std::chrono::high_resolution_clock::now();
+	printf("using flush\n");
+	std::cout<<reorder_<<std::endl;
 	if(!reorder_) {
 		return;
 	}
+	std::cout<<reorder_<<std::endl;
 	ThreadSafe t(&mutex_m, getLock && threadSafe_);
 	size_t nflush = 0;
 	while(nflush < finished_.size() && finished_[nflush]) {
 		assert(started_[nflush]);
 		nflush++;
 	}
+	printf("nflush = %ld\n lines_=  %ld NFLUSH_THRESH=%ld",nflush,lines_.size(),NFLUSH_THRESH);
 	// Waiting until we have several in a row to flush cuts down on copies
 	// (but requires more buffering)
+	//最后一次强制force
 	if(force || nflush >= NFLUSH_THRESH) {
+		std::cout<<force<<" forcing "<<nflush<<std::endl;
 		for(size_t i = 0; i < nflush; i++) {
 			assert(started_[i]);
 			assert(finished_[i]);
@@ -96,6 +122,11 @@ void OutputQueue::flush(bool force, bool getLock) {
 		cur_ += nflush;
 		nflushed_ += nflush;
 	}
+	    // 获取当前时间（结束时间）
+    auto end = std::chrono::high_resolution_clock::now();
+	  // 计算操作的持续时间
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);  // 转换为毫秒
+    std::cout << "操作耗时： " << duration.count() << " 毫秒" << std::endl;
 }
 
 #ifdef OUTQ_MAIN

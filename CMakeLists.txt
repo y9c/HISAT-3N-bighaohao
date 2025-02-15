@@ -19,7 +19,7 @@ set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
 
 # Common Flag
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2 -L/GLOBALFS/sysu_hpcscc_2/lh/asc25/depend/jemalloc-5.3.0/build/lib -Wl,-rpath,/GLOBALFS/sysu_hpcscc_2/lh/asc25/depend/jemalloc-5.3.0/build/lib -ljemalloc -lm -lstdc++ -pthread")
-
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2 /GLOBALFS/sysu_hpcscc_2/lh/asc25/depend/jemalloc-5.3.0/build/lib/libjemalloc.a -lm -lstdc++ -pthread")
 # Debug/Release Flag
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -funroll-loops -march=native -fopenmp -flto=4 -faligned-new")
@@ -258,3 +258,10 @@ add_dependencies(hisat2-all
 #
 #target_compile_options(hisat2-inspect-s PUBLIC $<$<CONFIG:DEBUG>:-DDEBUGONLY>)
 #target_compile_options(hisat2-inspect-s PUBLIC $<$<CONFIG:RELEASE>:-DRELEASEONLY>)
+
+
+
+message(STATUS "C++ Compiler==========: ${CMAKE_CXX_COMPILER}")
+message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
+message(STATUS "CMAKE_CXX_FLAGS_DEBUG: ${CMAKE_CXX_FLAGS_DEBUG}")
+message(STATUS "CMAKE_CXX_FLAGS_RELEASE: ${CMAKE_CXX_FLAGS_RELEASE}")

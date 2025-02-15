@@ -320,7 +320,17 @@ int hisat_3n_table()
             while (positions->linePool_3.size_approx() !=0 || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(10000));
             }
-            this_thread::sleep_for (std::chrono::microseconds(10000));
+            // // size_approx可能会引发问题，除非linepool稳定下来，否则返回的值不一定为真
+            // this_thread::sleep_for (std::chrono::microseconds(10000));
+            
+            // 确保工作线程结束
+            int temp_size=1;
+            while(temp_size!=0) 
+            {
+                temp_size=positions->line_size.load(std::memory_order_acquire);
+                this_thread::sleep_for (std::chrono::microseconds(100000));
+            }
+
             
             //this_thread::sleep_for (std::chrono::microseconds(30000000));
             end = std::chrono::high_resolution_clock::now();
@@ -381,6 +391,7 @@ int hisat_3n_table()
             throw 1;
         }
         positions->linePool_3.enqueue(line);
+        positions->line_size.fetch_add(1, std::memory_order_relaxed);   //统计linepool的大小
         //positions->linePool.push(line);
         lastPos = samPos;
     }
@@ -402,15 +413,26 @@ int hisat_3n_table()
     while (positions->linePool_3.size_approx() !=0 || positions->outputPositionPool_2.size() > 10000000) {
         this_thread::sleep_for (std::chrono::microseconds(100000));
     }
-    this_thread::sleep_for (std::chrono::microseconds(10000));
+    this_thread::sleep_for (std::chrono::microseconds(100000));
+
+    //原子正确操作 确保工作线程结束
+    int now_size=1;
+    while(now_size!=0)
+    {
+        now_size=positions->line_size.load(std::memory_order_acquire);
+        this_thread::sleep_for (std::chrono::microseconds(100000));
+    }
+
+
+
     // make sure all workers finished their appending work.
     positions->appendingFinished();
     // move all position to outputPool
     positions->moveAllToOutput();
     // wait until outputPool is empty
-    while (!positions->outputPositionPool_2.empty()) {
-        this_thread::sleep_for (std::chrono::microseconds(100));
-    }
+    // while (!positions->outputPositionPool_2.empty()) {
+    //     this_thread::sleep_for (std::chrono::microseconds(100));
+    // }
     auto front = positions->outputPositionPool_3.peek();
     std::cout<<front<<std::endl;
     while(front!=nullptr)

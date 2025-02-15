@@ -31,6 +31,7 @@
 #include <utility>
 #include "alt.h"
 #include "splice_site.h"
+#include <iostream>
 
 static const TAlScore getMinScore() {
     return std::numeric_limits<TAlScore>::min() / 2;
@@ -1678,7 +1679,7 @@ template <typename index_t>
 class AlnSinkWrap3N : public AlnSinkWrap<index_t> {
     using AlnSinkWrap<index_t>::obuf_;
     using AlnSinkWrap<index_t>::g_;
-    using AlnSinkWrap<index_t>::rdid_;
+    using AlnSinkWrap<index_t>::rdid_;				//这个是啥
     using AlnSinkWrap<index_t>::threadid_;
     using AlnSinkWrap<index_t>::rd1_;
     using AlnSinkWrap<index_t>::rd2_;
@@ -1732,7 +1733,7 @@ public:
         }
     }
 
-    void finishRead(
+    void finishRead(			//锁瓶颈调度
             const SeedResults<index_t> *sr1, // seed alignment results for mate 1
             const SeedResults<index_t> *sr2, // seed alignment results for mate 2
             bool               exhaust1,     // mate 1 exhausted?
@@ -1754,8 +1755,10 @@ public:
             bool suppressAlignments,         // = false
             bool templateLenAdjustment)      // = true
     {
-        obuf_.clear();
-        OutputQueueMark qqm(g_.outq(), obuf_, rdid_, threadid_);
+        obuf_.clear();			//string.clear()
+		//std::cout<<"using OutputQueueMark"<<rdid_<<" "<<threadid_<<" "<<obuf_<<std::endl;
+        OutputQueueMark qqm(g_.outq(), obuf_, rdid_, threadid_);	//g_ global alignment sink
+		//obuf_ 是待输出字符串 
         assert(init_);
         if(!suppressSeedSummary) {
             if(sr1 != NULL) {
@@ -2263,7 +2266,7 @@ public:
         }
         return;
     }
-};
+};	//结尾
 
 /**
  * An AlnSink concrete subclass for printing SAM alignments.  The user might

@@ -34,6 +34,7 @@
 #include "readerwriterqueue.h"
 #include "concurrentqueue.h"
 #include <atomic>
+#include <stdio.h>
 
 using namespace std;
 
@@ -253,7 +254,7 @@ public:
     moodycamel::ReaderWriterQueue<Position*> outputPositionPool_3;
     moodycamel::ConcurrentQueue<string*> linePool_3;
     moodycamel::ConcurrentQueue<string*> freeLinePool_3;
-
+    std::atomic<int> line_size;
     bool working;
     bool output_thread_working; //输出线程是否工作
     mutex mutex_;
@@ -302,7 +303,7 @@ public:
     void freePositionPool_init()
     {
         std::mutex queueMutex;  // 保护 queue 的 mutex
-        int positionsPerThread=100000000;
+        int positionsPerThread=80000000;
         const int temp_numThreads = 2;  // 启动 2 个线程
         #pragma omp parallel num_threads(temp_numThreads)
         {
@@ -867,6 +868,7 @@ public:
                 returnLine(lines[i]);   //解析完成返还资源到freepool    %2
             appendPositions(newAlignment);  //用时较多 30%
             }
+            line_size.fetch_sub(temp_count, std::memory_order_relaxed); //减少计数器
             workerLock[threadID]->unlock();
         }
     }

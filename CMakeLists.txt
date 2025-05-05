@@ -18,11 +18,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
 
 # Common Flag
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2 -L/GLOBALFS/sysu_hpcscc_2/lh/asc25/depend/jemalloc-5.3.0/build/lib -Wl,-rpath,/GLOBALFS/sysu_hpcscc_2/lh/asc25/depend/jemalloc-5.3.0/build/lib -ljemalloc -lm -lstdc++ -pthread")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2 -L`jemalloc-config --libdir` -Wl,-rpath,`jemalloc-config --libdir` -ljemalloc -lm -lstdc++ -pthread")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2 /GLOBALFS/sysu_hpcscc_2/lh/asc25/depend/jemalloc-5.3.0/build/lib/libjemalloc.a -lm -lstdc++ -pthread")
 # Debug/Release Flag
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -funroll-loops -march=native -fopenmp -flto=4 -faligned-new")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g -funroll-loops -march=native -fopenmp -flto=4 -faligned-new")
 
 set(INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for executables")
 

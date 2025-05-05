@@ -3343,7 +3343,7 @@ static inline void printEEScoreMsg(
 //工作线程+主线程
 static void multiseedSearchWorker_hisat2(void *vp) {
 	int tid = *((int*)vp);
-	printf("start multiseedSearchWorker_hisat2 %d\n",tid);
+	//printf("start multiseedSearchWorker_hisat2 %d\n",tid);
 	//std::cout<<"start multiseedSearchWorker_hisat2 "<<tid<<std::endl;
 	
 
@@ -3968,7 +3968,7 @@ static void multiseedSearch(
 			tids[i] = i+1;
             threads[i] = new tthread::thread(multiseedSearchWorker_hisat2, (void*)&tids[i]);	//启动工作线程
 		}
-		printf("nthreads = %d\n,======end multiseedSearchWorker_hisat2",nthreads);
+		//printf("nthreads = %d\n,======end multiseedSearchWorker_hisat2",nthreads);
         for (int i = 0; i < nthreads; i++)
             threads[i]->join();
 
@@ -4374,7 +4374,7 @@ static void driver(				//启用多个线程
 		nthreads > 1,            // whether to be thread-safe
 		skipReads);              // first read will have this rdid
 	// 在类外创建并启动线程
-	std::cout<<"start output_thread";
+	//std::cout<<"start output_thread";
     std::thread output_thread(&OutputQueue::get_output_from_queue_2, &oq);  // 传递类实例的指针
 	// 让线程在后台执行，不等待它完成
     //output_thread.detach();
@@ -4768,15 +4768,15 @@ static void driver(				//启用多个线程
                 }
             }
         }
-		std::cout<<"begin flush==========="<<std::endl;
+		//std::cout<<"begin flush==========="<<std::endl;
 		oq.flush(true);	//唯一一次flush
-		std::cout<<"end flush==========="<<std::endl;
+		//std::cout<<"end flush==========="<<std::endl;
 		assert_eq(oq.numStarted(), oq.numFinished());
 		assert_eq(oq.numStarted(), oq.numFlushed());
-		std::cout<<"end assert==========="<<std::endl;
+		//std::cout<<"end assert==========="<<std::endl;
 		oq.endoutput();
 		output_thread.join();
-		std::cout<<"end output===="<<std::endl;
+		//std::cout<<"end output===="<<std::endl;
 		delete patsrc;
 		delete mssink;
         delete ssdb;
@@ -4974,9 +4974,9 @@ int hisat2(int argc, const char **argv) {	//主线程入口
 				cout << "Press key to continue..." << endl;
 				getchar();
 			}
-			std::cout<<"start driver"<<std::endl;
+			//std::cout<<"start driver"<<std::endl;
 			driver<SString<char> >("DNA", bt2indexs, outfile);			//主线程耗时函数
-			std::cout<<"end driver"<<std::endl;
+			//std::cout<<"end driver"<<std::endl;
 		}
 		return 0;
 	} catch(std::exception& e) {

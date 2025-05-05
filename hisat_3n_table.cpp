@@ -33,7 +33,7 @@ bool uniqueOnly = false;
 bool multipleOnly = false;
 bool CG_only = false;
 int nThreads = 1;
-long long int loadingBlockSize = 3200000000; // 1 MB  --> 3 GB
+long long int loadingBlockSize = 6400000000; // 1 MB  --> 3 GB
 char convertFrom = '0';
 char convertTo = '0';
 char convertFromComplement;
@@ -258,7 +258,7 @@ int hisat_3n_table()
 
     end = std::chrono::high_resolution_clock::now();
     duration = end - start;
-    std::cout << "Code block executed in: " << duration.count() << " seconds." << std::endl;
+    //std::cout << "Code block executed in: " << duration.count() << " seconds." << std::endl;
 
     // open #nThreads workers
     // thread(待执行函数，参数1，参数2)
@@ -315,6 +315,7 @@ int hisat_3n_table()
         // if the samChromosome is different than current positions' chromosome, finish all SAM line.
         // then load a new reference chromosome.
         if (samChromosome != positions->chromosome) {   //染色体改变
+            //printf("chr change\n");
             // wait all line is processed
             while (!positions->linePool.empty() || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
@@ -341,19 +342,19 @@ int hisat_3n_table()
             //this_thread::sleep_for (std::chrono::microseconds(30000000));
             end = std::chrono::high_resolution_clock::now();
             duration = end - start;
-            std::cout << "####Working Code block executed in: " << duration.count() << " seconds." << std::endl;
+            //std::cout << "####Working Code block executed in: " << duration.count() << " seconds." << std::endl;
 
             positions->appendingFinished(); //等待所有工作进程的append操作完成
 
             // 获取当前时间点
             start = std::chrono::high_resolution_clock::now();
-            std::cout<<std::endl<<"==================begin moveallto output;  positiong->chr="<<positions->chromosome<<"   now samChr="<<samChromosome<<std::endl;
+            //std::cout<<std::endl<<"==================begin moveallto output;  positiong->chr="<<positions->chromosome<<"   now samChr="<<samChromosome<<std::endl;
             //positions->output_thread_working=false; //先暂停输出线程
             positions->moveAllToOutput();   //性能瓶颈
 
             end = std::chrono::high_resolution_clock::now();
             duration = end - start;
-            std::cout << "####Moving Code block executed in: " << duration.count() << " seconds." << std::endl;
+            //std::cout << "####Moving Code block executed in: " << duration.count() << " seconds." << std::endl;
 
 
             start = std::chrono::high_resolution_clock::now();
@@ -365,14 +366,15 @@ int hisat_3n_table()
 
             end = std::chrono::high_resolution_clock::now();
             duration = end - start;
-            std::cout << "####Loding Code block executed in: " << duration.count() << " seconds." << std::endl;
+            //std::cout << "####Loding Code block executed in: " << duration.count() << " seconds." << std::endl;
 
             start = std::chrono::high_resolution_clock::now();
             reloadPos = loadingBlockSize;
             lastPos = 0;
         }
-        // if the samPos is larger than reloadPos, load 1 loadingBlockSize bp in from reference.
+        // // if the samPos is larger than reloadPos, load 1 loadingBlockSize bp in from reference.
         while (samPos > reloadPos) {
+            printf("samPos is larger than reloadPos\n");
             while (!positions->linePool.empty() || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
             }
@@ -383,7 +385,7 @@ int hisat_3n_table()
 
             positions->appendingFinished();
 
-            std::cout<<"begin move block to output"<<std::endl;
+            //std::cout<<"begin move block to output"<<std::endl;
             //positions->output_thread_working=false; //先暂停输出线程
             positions->moveBlockToOutput();
             //positions->output_thread_working=true;  //重新启动输出线程
@@ -413,9 +415,6 @@ int hisat_3n_table()
     while (!positions->linePool.empty()) {
         this_thread::sleep_for (std::chrono::microseconds(100));
     }
-    // while (!positions->wk_f ) {
-    //     this_thread::sleep_for (std::chrono::microseconds(100));
-    // }
     while (positions->linePool_3.size_approx() !=0 || positions->outputPositionPool_2.size() > 10000000) {
         this_thread::sleep_for (std::chrono::microseconds(100000));
     }
@@ -440,13 +439,13 @@ int hisat_3n_table()
     //     this_thread::sleep_for (std::chrono::microseconds(100));
     // }
     auto front = positions->outputPositionPool_3.peek();
-    std::cout<<front<<std::endl;
+    //std::cout<<front<<std::endl;
     while(front!=nullptr)
     {   
         front = positions->outputPositionPool_3.peek();
         this_thread::sleep_for (std::chrono::microseconds(100000));
     }
-    std::cout<<front<<std::endl;
+    //std::cout<<front<<std::endl;
 
     // 系统操作，直接注释
     // stop all thread and clean

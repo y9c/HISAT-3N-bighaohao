@@ -1021,6 +1021,15 @@ public:
 	}
 
 	/**
+
+	通过一步操作（即一次带宽操作）推进这个 GWState。
+	在发生“拆分”时，更多的元素会被添加到 EList 'st' 中，
+	而 'st' 必须有足够的空间至少容纳 3 个元素，而无需再次扩展。
+	如果触发了 'st' 的扩展，这个 GWState 对象将变得无效。
+	返回一对数字，第一个是此推进过程中找到的已解决但未报告的偏移量数量，
+	第二个是尚未解决的偏移量数量。 */
+	// 工作线程主要耗时函数
+	/**
 	 * Advance this GWState by one step (i.e. one BW operation).  In
 	 * the event of a "split", more elements are added to the EList
 	 * 'st', which must have room for at least 3 more elements without
@@ -1032,7 +1041,7 @@ public:
 	 * second being the number of as-yet-unresolved offsets.
 	 */
 	template <int S>
-	pair<int, int> advance(
+	pair<int, int> advance(				
 		const GFM<index_t>& gfm,     // the forward Bowtie index, for stepping left
 		const BitPairReference& ref, // bitpair-encoded reference
 		SARangeWithOffs<T, index_t>& sa,      // SA range with offsets
@@ -1303,7 +1312,7 @@ public:
 			met.bwops++;
 			prm.nExFmops++;
             pair<index_t, index_t> node_range(0, 0);
-			pair<index_t, index_t> range = gfm.mapGLF1(top, tloc, &node_range);
+			pair<index_t, index_t> range = gfm.mapGLF1(top, tloc, &node_range);	//调用该函数
             top = range.first;
 			assert_neq(top, oldtop);
 			bot = top+1;

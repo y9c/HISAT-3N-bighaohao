@@ -249,11 +249,11 @@ bool PairedDualPatternSource::nextReadPair(			//主要调用函数流 PairedDual
 			// Patterns from srca_ are unpaired
 			do {
 				(*srca_)[cur]->nextRead(ra, rdid, endid, success, done);	//主要调用函数流 每次读都要上锁
-				if(rdid%1000000==0)
-					printf("rdid = %d,endid=%d,succ=%d,done=%d,cur=%d,srca_->size()=%d\n",rdid,endid,success,done,cur,srca_->size());
+				// if(rdid%1000000==0)
+				// 	printf("rdid = %d,endid=%d,succ=%d,done=%d,cur=%d,srca_->size()=%d\n",rdid,endid,success,done,cur,srca_->size());
 			} while(!success && !done);	//// 读取成功且未完成时，重复读取
 			if(!success) {
-				printf("==================nosucces=====================\n");
+				//printf("==================nosucces=====================\n");
 				assert(done);
 				lock();
 				if(cur + 1 > cur_) cur_++; //如果当前索引超过了 `cur_`，则更新 `cur_`

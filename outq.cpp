@@ -47,13 +47,13 @@ void OutputQueue::beginRead(TReadId rdid, size_t threadId) {
 		started_[rdid - cur_] = true;
 		finished_[rdid - cur_] = false;
 	}									//t处理时解锁
-	if(nstarted_%1000000==0)
-	{
-		long int value =numStarted();
-		long int value2 =numFinished();
-		long int value3 =numFlushed();
-		printf("OutputQueue::beginRead nstarted=%d nstarted_2=%ld rdid=%d cur_=%d tid=%d nfinished_=%d   nfinished_2=%ld,nflush_2=%ld\n",nstarted_,value,rdid,cur_,threadId,nfinished_,value2,value3);
-	}
+	// if(nstarted_%1000000==0)
+	// {
+	// 	long int value =numStarted();
+	// 	long int value2 =numFinished();
+	// 	long int value3 =numFlushed();
+	// 	printf("OutputQueue::beginRead nstarted=%d nstarted_2=%ld rdid=%d cur_=%d tid=%d nfinished_=%d   nfinished_2=%ld,nflush_2=%ld\n",nstarted_,value,rdid,cur_,threadId,nfinished_,value2,value3);
+	// }
 	//printf("OutputQueue::beginRead nstarted=%d rdid=%d cur_=%d tid=%d\n",nstarted_,rdid,cur_,threadId);
 	// 休眠 1 秒钟
     //std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -93,24 +93,24 @@ void OutputQueue::finishRead(const BTString& rec, TReadId rdid, size_t threadId)
 void OutputQueue::flush(bool force, bool getLock) {
 	// 获取当前时间（开始时间）
     auto start = std::chrono::high_resolution_clock::now();
-	printf("using flush\n");
-	std::cout<<reorder_<<std::endl;
+	//printf("using flush\n");
+	//std::cout<<reorder_<<std::endl;
 	if(!reorder_) {
 		return;
 	}
-	std::cout<<reorder_<<std::endl;
+	//std::cout<<reorder_<<std::endl;
 	ThreadSafe t(&mutex_m, getLock && threadSafe_);
 	size_t nflush = 0;
 	while(nflush < finished_.size() && finished_[nflush]) {
 		assert(started_[nflush]);
 		nflush++;
 	}
-	printf("nflush = %ld\n lines_=  %ld NFLUSH_THRESH=%ld",nflush,lines_.size(),NFLUSH_THRESH);
+	//printf("nflush = %ld\n lines_=  %ld NFLUSH_THRESH=%ld",nflush,lines_.size(),NFLUSH_THRESH);
 	// Waiting until we have several in a row to flush cuts down on copies
 	// (but requires more buffering)
 	//最后一次强制force
 	if(force || nflush >= NFLUSH_THRESH) {
-		std::cout<<force<<" forcing "<<nflush<<std::endl;
+		//std::cout<<force<<" forcing "<<nflush<<std::endl;
 		for(size_t i = 0; i < nflush; i++) {
 			assert(started_[i]);
 			assert(finished_[i]);

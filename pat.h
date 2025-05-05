@@ -806,7 +806,7 @@ public:
 		assert(!fb_.isOpen());
 		open(); // open first file in the list
 		filecur_++;
-		printf("start init BufferedFilePatternSource\n");
+		//printf("start init BufferedFilePatternSource\n");
 		read_thread =std::thread(&BufferedFilePatternSource::read_never_stop_thread,this);
 		read_thread.detach();
 	}

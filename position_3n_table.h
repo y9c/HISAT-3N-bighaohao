@@ -114,7 +114,7 @@ public:
      */
 
     void set (string& inputChr, long long int inputLoc) {
-        chromosome = inputChr;
+        chromosome = inputChr;   
         location = inputLoc + 1;
     }
 
@@ -211,7 +211,7 @@ public:
             return false;
         } else {
             uniqueIDs.emplace(uniqueIDs.begin()+index, InAlignment.readNameID, InBase.converted, InBase.qual);
-            //std::cout<<uniqueIDs.size()<<std::endl;
+            //std::cout<<uniqueIDs.size()<<std::endl;       //大约三百多
             return true;
         }    //此处性能开销极大，vector插入操作
     }
@@ -311,14 +311,14 @@ public:
             std::queue<Position*> localQueue;
             // 获取线程 ID
             int threadId = omp_get_thread_num();
-            std::cout<<threadId<<std::endl;
+            //std::cout<<threadId<<std::endl;
 
             for (int i = 0; i < positionsPerThread; ++i) {
                 Position* newPosition = new Position();  // 创建新对象
                 localQueue.push(newPosition);  // 将指针推入该线程的局部队列
             }
 
-            std::cout<<"begin push"<<std::endl;
+            //std::cout<<"begin push"<<std::endl;
             // // 合并局部队列到全局队列
             queueMutex.lock();
             while (!localQueue.empty()) {
@@ -327,7 +327,7 @@ public:
             }
             queueMutex.unlock();
 
-            std::cout<<"end push"<<std::endl;
+            //std::cout<<"end push"<<std::endl;
         }
     }
 
@@ -373,7 +373,7 @@ public:
      * Scan the reference file. Record each chromosome and its position in file.
      */
     void LoadChromosomeNamesPos() {
-        std::cout<<"loadchr"<<std::endl;
+        //std::cout<<"loadchr"<<std::endl;
         string line;
         while (refFile.good()) {
             getline(refFile, line);
@@ -567,7 +567,7 @@ public:
         int index=0;
         int tempsize=refPositions.size();
         bool temp_empty_flag[tempsize];
-        std::cout<<"refpositions size = "<<tempsize<<std::endl;
+        //std::cout<<"refpositions size = "<<tempsize<<std::endl;
         std::mutex queueMutex;
         int count=0;
         #pragma omp parallel num_threads(8)
@@ -587,6 +587,7 @@ public:
                 }
             }
             int thread_id = omp_get_thread_num(); 
+
             //// 合并局部的 freePositionPool 到全局的 freePositionPool_2
             queueMutex.lock();
             //std::cout<<"now localfreepool size="<<localFreePool.size()<<" "<<thread_id<<std::endl;
@@ -608,7 +609,7 @@ public:
                 count++;
             } 
         }
-        std::cout<<"all !temp_empty_flag_count="<<count<<std::endl;
+        //std::cout<<"all !temp_empty_flag_count="<<count<<std::endl;
 
 
         // //原来的代码
@@ -628,6 +629,7 @@ public:
      * initially load reference sequence for 2 million bp
      */
     void loadNewChromosome(string targetChromosome) {
+        //printf("start load\n");
         refFile.clear();
         // find the start position in file based on chromosome name.
         streampos startPos = chromosomePos.getChromosomePosInRefFile(targetChromosome);
@@ -637,24 +639,38 @@ public:
         string line;
         lastBase = 'X';
         location = 0;
-        std::cout<<"using loadnewChr now free pool="<<freePositionPool_2.size()<<std::endl;
+        //printf("start load\n");
+        //printf("target=%s",targetChromosome);
+        //std::cout<<"using loadnewChr now free pool="<<freePositionPool_2.size()<<std::endl;
+        int count=0;
         while (refFile.good()) {
+            //count++;
+            //std::cout<<"get ";
             getline(refFile, line);
+            //std::cout<<line;
+            //printf("%d\n",count);
+            //std::cout<<line.front()<<" ";
             if (line.front() == '>') { // this line is chromosome name
+                //printf("end > load\n");
                 return; // meet next chromosome, return it.
             } else {
                 if (line.empty()) { continue; }
                 // change all base to upper case
+                //printf("change");
                 for (int i = 0; i < line.size(); i++) {
                     line[i] = toupper(line[i]);
                 }
                 //std::cout<<line.size()<<std::endl;
+                //printf("app");
                 appendRefPosition(line);    //性能瓶颈          line='ACATTGTTGCCAAATATAAATAGTGAGAAAAGCATTTTATATTCCCTAAGGCTCCTTGAC'
+                //printf(" app-end");
                 if (location >= refCoveredPosition) {
+                    //printf("end >bigger load\n");
                     return;
                 }
             }
         }
+        //printf("end load\n");
     }
 
     /**
@@ -698,13 +714,13 @@ public:
         long long int startPos = newAlignment.location; // 1-based position
         // find the first reference position in pool.
         int index = getIndex(newAlignment.location);    //获取参考位置索引
-
+        //std::cout<<newAlignment.sequence.size()<<"  index ="<<index<<std::endl;
         for (int i = 0; i < newAlignment.sequence.size(); i++) {    //遍历读取序列的每个碱基
             PosQuality* b = &newAlignment.bases[i];
             if (b->remove) {
                 continue;
             }
-
+            //std::cout<<index+b->refPos<<" ";
             Position* pos = refPositions[index+b->refPos];  //将比对位置添加到参考位置
             //assert (pos->location == startPos + b->refPos); debug模式下保留，release可去除
 
@@ -733,7 +749,7 @@ public:
      * get a Position pointer from freePositionPool, if freePositionPool is empty, make a new Position pointer.
      */
     void getFreePosition(Position*& newPosition) {          //loadnewch 加载新染色体主线程调用
-        while (outputPositionPool_2.size() >= 10000000) {     //原来为outputpositiongpool
+        while (outputPositionPool_3.size() >= 10000000) {     //原来为outputpositiongpool
             this_thread::sleep_for (std::chrono::microseconds(1));
         }
         // if (freePositionPool.popFront(newPosition)) {
@@ -866,7 +882,7 @@ public:
             {
                 newAlignment.parse(lines[i]);   //用时较少  9%
                 returnLine(lines[i]);   //解析完成返还资源到freepool    %2
-            appendPositions(newAlignment);  //用时较多 30%
+                appendPositions(newAlignment);  //用时较多 30%
             }
             line_size.fetch_sub(temp_count, std::memory_order_relaxed); //减少计数器
             workerLock[threadID]->unlock();

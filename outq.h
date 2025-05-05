@@ -77,7 +77,7 @@ public:
 		while(true)
 		{
 			temp_size=output_queue_2.size_approx();
-			std::cout<<"tempsize="<<temp_size<<" ";
+			//std::cout<<"tempsize="<<temp_size<<" ";
 			if(temp_size==0)
 			{	
 				std::this_thread::sleep_for(std::chrono::milliseconds(1)); //睡眠1ms

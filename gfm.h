@@ -3178,6 +3178,7 @@ public:
 		int i = 0;
 #ifdef POPCNT_CAPABILITY
         if(_usePOPCNTinstruction) {
+            //print('aaaa');
             usePOPCNT = true;
             int by = l._by + (l._bp > 0 ? 1 : 0);
             for(; i < by; i += 8) {
@@ -3621,7 +3622,7 @@ public:
 		// Extract and return appropriate bit-pair
 		return unpack_2b_from_8b(l.side(this->gfm())[l._by], l._bp);
 	}
-
+    //大耗时函数
 	/**
 	 * Return the final character in row i (i.e. the i'th character in the
 	 * BWT transform).  Note that the 'L' in the name of the function
@@ -3901,16 +3902,16 @@ public:
 		ASSERT_ONLY(, bool overrideSanity = false)
 		) const
 	{
-        if(rowL(l) != c) return (index_t)INDEX_MAX;
+        if(rowL(l) != c) return (index_t)INDEX_MAX;     //主耗时
         for(index_t i = 0; i < _zOffs.size(); i++) {
             if(row == _zOffs[i]) return (index_t)INDEX_MAX;
         }
 		index_t ret;
 		assert_lt(c, 4);
 		assert_geq(c, 0);
-		ret = countBt2Side(l, c);
+		ret = countBt2Side(l, c);   //次耗时
 		assert_lt(ret, this->_gh._gbwtLen);
-#ifndef NDEBUG
+#ifndef NDEBUG      //if no def NDEBUG如果没有定义非调试版本--》如果现在是调试版本编译下面
 		if(_sanity && !overrideSanity) {
 			// Make sure results match up with results from mapLFEx;
 			// be sure to override sanity-checking in the callee, or we'll
@@ -3969,7 +3970,7 @@ public:
     {
         assert_lt(c, 4);
         assert_geq(c, 0);
-        index_t top = mapLF1(row, l, c);
+        index_t top = mapLF1(row, l, c);    //调用malLF1
         if(top == (index_t)INDEX_MAX) return pair<index_t, index_t>(0, 0);
         if(gh().linearFM()) {
             if(node_range != NULL) {
@@ -4042,7 +4043,7 @@ public:
             if(row == _zOffs[i]) return pair<index_t, index_t>((index_t)INDEX_MAX, (index_t)INDEX_MAX);
         }
 
-        mapLF1(row, l);
+        mapLF1(row, l); //次要耗时函数
         index_t top = row;
         if(top == (index_t)INDEX_MAX) return pair<index_t, index_t>(0, 0);
         if(gh().linearFM()) {

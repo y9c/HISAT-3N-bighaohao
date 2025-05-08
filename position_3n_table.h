@@ -251,10 +251,12 @@ public:
     std::queue<Position*> freePositionPool_2;
     std::queue<Position*> outputPositionPool_2;
     // 更改为无锁队列
+    moodycamel::ConcurrentQueue<Position*> freePositionPool_3;
     moodycamel::ReaderWriterQueue<Position*> outputPositionPool_3;
-    moodycamel::ConcurrentQueue<string*> linePool_3;
+    moodycamel::ConcurrentQueue<string*> linePool_3;    ////统计linepool的大小
     moodycamel::ConcurrentQueue<string*> freeLinePool_3;
     std::atomic<int> line_size;
+    std::atomic<int> freeposition_size;
     bool working;
     bool output_thread_working; //输出线程是否工作
     mutex mutex_;
@@ -293,11 +295,11 @@ public:
         while(freePositionPool.popFront(pos)) {
             delete pos;
         }
-        while(!freePositionPool_2.empty()) {
-            pos=freePositionPool_2.front();
-            freePositionPool_2.pop();
-            delete pos;
-        }
+        // while(!freePositionPool_2.empty()) {
+        //     pos=freePositionPool_2.front();
+        //     freePositionPool_2.pop();
+        //     delete pos;
+        // }
     }
 
     void freePositionPool_init()
@@ -322,7 +324,9 @@ public:
             // // 合并局部队列到全局队列
             queueMutex.lock();
             while (!localQueue.empty()) {
-                freePositionPool_2.push(localQueue.front());
+                //freePositionPool_2.push(localQueue.front());
+                freePositionPool_3.enqueue(localQueue.front());
+                //freeposition_size.fetch_add(1,std::memory_order_relaxed);   //计数
                 localQueue.pop();
             }
             queueMutex.unlock();
@@ -593,7 +597,9 @@ public:
             //std::cout<<"now localfreepool size="<<localFreePool.size()<<" "<<thread_id<<std::endl;
             while(!localFreePool.empty())
             {
-                freePositionPool_2.push(localFreePool.front());
+                //freePositionPool_2.push(localFreePool.front());
+                freePositionPool_3.enqueue(localFreePool.front());
+                //freeposition_size.fetch_add(1,std::memory_order_relaxed);   //计数
                 localFreePool.pop();
             }
             queueMutex.unlock();
@@ -749,7 +755,7 @@ public:
      * get a Position pointer from freePositionPool, if freePositionPool is empty, make a new Position pointer.
      */
     void getFreePosition(Position*& newPosition) {          //loadnewch 加载新染色体主线程调用
-        while (outputPositionPool_3.size() >= 10000000) {     //原来为outputpositiongpool
+        while (outputPositionPool_2.size() >= 10000000) {     //原来为outputpositiongpool,outputpositionpool_3没有.size函数
             this_thread::sleep_for (std::chrono::microseconds(1));
         }
         // if (freePositionPool.popFront(newPosition)) {
@@ -758,12 +764,19 @@ public:
         //     newPosition = new Position();
         // }
         //修改为普通queue
-        if (!freePositionPool_2.empty()) {
-            newPosition=freePositionPool_2.front();
-            freePositionPool_2.pop();
+        // if (!freePositionPool_2.empty()) {
+        //     newPosition=freePositionPool_2.front();
+        //     freePositionPool_2.pop();
+        //     return;
+        // } else {
+        //     newPosition = new Position();
+        // }
+        if(freePositionPool_3.try_dequeue(newPosition))
+        {
             return;
-        } else {
-            newPosition = new Position();
+        }
+        else{
+            newPosition = new Position;
         }
     }
 
@@ -783,7 +796,9 @@ public:
     void returnPosition(Position* pos) {
         pos->initialize();
         //freePositionPool.push(pos);
-        freePositionPool_2.push(pos);
+        //freePositionPool_2.push(pos);
+        freePositionPool_3.enqueue(pos);
+        //freeposition_size.fetch_add(1,std::memory_order_relaxed);   //计数
     }
 
     // void set_worker_false()

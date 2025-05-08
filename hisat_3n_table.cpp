@@ -33,7 +33,7 @@ bool uniqueOnly = false;
 bool multipleOnly = false;
 bool CG_only = false;
 int nThreads = 1;
-long long int loadingBlockSize = 6400000000; // 1 MB  --> 3 GB
+long long int loadingBlockSize = 12800000000; // 1 MB  --> 3 GB
 char convertFrom = '0';
 char convertTo = '0';
 char convertFromComplement;
@@ -315,7 +315,7 @@ int hisat_3n_table()
         // if the samChromosome is different than current positions' chromosome, finish all SAM line.
         // then load a new reference chromosome.
         if (samChromosome != positions->chromosome) {   //染色体改变
-            //printf("chr change\n");
+            printf("chr change,and now process %s\n",samChromosome.data());
             // wait all line is processed
             while (!positions->linePool.empty() || positions->outputPositionPool_2.size() > 10000000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));

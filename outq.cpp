@@ -47,12 +47,13 @@ void OutputQueue::beginRead(TReadId rdid, size_t threadId) {
 		started_[rdid - cur_] = true;
 		finished_[rdid - cur_] = false;
 	}									//t处理时解锁
-	if(nstarted_%1000000==0)
+	if(nstarted_%5000000==0)
 	{
-		long int value =numStarted();
-		long int value2 =numFinished();
-		long int value3 =numFlushed();
-		printf("OutputQueue::beginRead nstarted=%d nstarted_2=%ld rdid=%d cur_=%d tid=%d nfinished_=%d   nfinished_2=%ld,nflush_2=%ld\n",nstarted_,value,rdid,cur_,threadId,nfinished_,value2,value3);
+		// long int value =numStarted();
+		// long int value2 =numFinished();
+		// long int value3 =numFlushed();
+		// printf("OutputQueue::beginRead nstarted=%d nstarted_2=%ld rdid=%d cur_=%d tid=%d nfinished_=%d   nfinished_2=%ld,nflush_2=%ld\n",nstarted_,value,rdid,cur_,threadId,nfinished_,value2,value3);
+		std::cerr<<"nstarted="<<nstarted_<<" rid="<<rdid<<std::endl;
 	}
 	//printf("OutputQueue::beginRead nstarted=%d rdid=%d cur_=%d tid=%d\n",nstarted_,rdid,cur_,threadId);
 	// 休眠 1 秒钟

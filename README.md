@@ -1,9 +1,17 @@
-# hisat-3n优化实现 （ASC25赛题）
-本仓库包含初赛技术报告、初赛可行工作流、以及最新优化(决赛)的hisat-3n工具代码。决赛更多的是调度方面的优化，
-[初赛报告链接.pdf](RNA-m5c-report.pdf)
-[初赛可行工作流.tar.gz](RNA.tar.gz)
-[初赛赛题](ASC25_Preliminary_Round_Announcement.pdf)
-下面是初赛优化总结:
+# HISAT-3N 优化实现（ASC25 赛题）
+
+本仓库记录我们在 ASC25 RNA m5C 赛题中对 **HISAT-3N / HISAT-3N-Table** 的优化实践，包含：
+- ✅ 初赛：技术报告 + 可运行的基线工作流（workflow baseline）
+- ✅ HISAT-3N在决赛用到的最新代码
+- 决赛：面向端到端用时的进一步优化，重点在 **调度与并行策略**(此处没有提供)
+
+相关材料：
+- [初赛技术报告（PDF）](RNA-m5c-report.pdf)
+- [初赛可行工作流（tar.gz）](RNA.tar.gz)
+- [ASC25 初赛赛题说明（PDF）](ASC25_Preliminary_Round_Announcement.pdf)
+
+下面是初赛优化总结（做了什么、为什么有效、收益是多少）：
+
 ---
 # RNA m5C Site Detection Workflow Acceleration (HISAT-3N / HISAT-3N-Table)
 本仓库提供一套**可复现的 RNA m5C 修饰位点检测工作流**，并在保持检测流程正确性/可靠性的前提下，对工作流及关键工具进行了系统级性能优化。我们结合**软件插桩（instrumentation）**与 **Intel VTune Profiler** 定位瓶颈，围绕工作流中最耗时的两个组件 **`hisat-3n-table`** 与 **`hisat-3n`** 进行源码级与系统级加速，同时在调度层（workflow-level）挖掘可并行性，最终将端到端运行时间显著缩短。

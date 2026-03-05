@@ -59,3 +59,6 @@ docs/.*-cache
 # 也允许跟踪 .gitignore 文件
 !.gitignore
 !CMakeLists.txt
+
+!*.tar.gz
+!*.pdf

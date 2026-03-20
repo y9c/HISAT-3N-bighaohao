@@ -22,7 +22,7 @@ set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2 /GLOBALFS/sysu_hpcscc_2/lh/asc25/depend/jemalloc-5.3.0/build/lib/libjemalloc.a -lm -lstdc++ -pthread")
 # Debug/Release Flag
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g -funroll-loops -march=native -fopenmp -flto=4 -faligned-new")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g -funroll-loops -march=native -fopenmp  -faligned-new")
 
 set(INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for executables")
 

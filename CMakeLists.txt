@@ -273,3 +273,10 @@ add_custom_target(symlinks ALL
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
+
+add_custom_target(symlinks_target
+    COMMAND ${CMAKE_COMMAND} -E create_symlink hisat2-align-s hisat-3n
+    COMMAND ${CMAKE_COMMAND} -E create_symlink hisat2-build-s hisat-3n-build
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+

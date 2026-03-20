@@ -265,3 +265,11 @@ message(STATUS "C++ Compiler==========: ${CMAKE_CXX_COMPILER}")
 message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "CMAKE_CXX_FLAGS_DEBUG: ${CMAKE_CXX_FLAGS_DEBUG}")
 message(STATUS "CMAKE_CXX_FLAGS_RELEASE: ${CMAKE_CXX_FLAGS_RELEASE}")
+
+# Add symlinks for compatibility
+add_custom_target(symlinks ALL
+    COMMAND ${CMAKE_COMMAND} -E create_symlink hisat2-align-s hisat-3n
+    COMMAND ${CMAKE_COMMAND} -E create_symlink hisat2-build-s hisat-3n-build
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+

@@ -5033,8 +5033,10 @@ static bool findAny(const std::string& base, bool large) {
     std::string suffix = std::string(".1.") + ext;
     while((ent = readdir(d)) != NULL) {
         std::string name(ent->d_name);
-        if(name.size() >= basename.size() + suffix.size() &&
+        std::string sep(".", 1);
+        if(name.size() >= basename.size() + sep.size() + suffix.size() &&
            name.compare(0, basename.size(), basename) == 0 &&
+           name.compare(basename.size(), sep.size(), sep) == 0 &&
            name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
             found = true;
             break;

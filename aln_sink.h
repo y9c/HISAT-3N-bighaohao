@@ -411,9 +411,9 @@ public:
 	
 	ReportingState(const ReportingParams& p) : p_(p) { reset(); }
 
-    ReportingState operator=(ReportingState& copySource) {
+    ReportingState& operator=(const ReportingState& copySource) {
         state_ = copySource.state_;
-        paired_ = copySource.paired_;;
+        paired_ = copySource.paired_;
         nconcord_ = copySource.nconcord_;
         ndiscord_ = copySource.ndiscord_;
         nunpair1_ = copySource.nunpair1_;
@@ -431,6 +431,7 @@ public:
         exitUnpair2_ = copySource.exitUnpair2_;
         concordBest_ = copySource.concordBest_;
         done_ = copySource.done_;
+        return *this;
     }
 	/**
 	 * Set all state to uninitialized defaults.

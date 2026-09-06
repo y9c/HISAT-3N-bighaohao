@@ -118,7 +118,7 @@ target_include_directories(hisat3n_objs
 )
 
 target_compile_options(hisat3n_objs PRIVATE
-    $<$<CONFIG:Release>:-O3 -g -funroll-loops -march=native -faligned-new>
+    $<$<CONFIG:Release>:-O3 -funroll-loops -march=native -faligned-new>
     $<$<BOOL:${OpenMP_FOUND}>:-fopenmp>
 )
 
@@ -165,6 +165,15 @@ endforeach()
 
 set_target_properties(hisat3n_static PROPERTIES OUTPUT_NAME hisat3n)
 set_target_properties(hisat3n_shared PROPERTIES OUTPUT_NAME hisat3n)
+
+# Link-time optimization: cross-TU inlining in this template-heavy codebase
+# (the dual-width index_t instantiations) gives a measurable runtime win.
+include(CheckIPOSupported)
+check_ipo_supported(RESULT lto_supported OUTPUT lto_error)
+if(lto_supported)
+    set_target_properties(hisat3n_objs hisat3n_static hisat3n_shared PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
 
 # ---------------------------------------------------------------------------
 # Single binary: dispatches by subcommand (align | build) or argv[0] shim.

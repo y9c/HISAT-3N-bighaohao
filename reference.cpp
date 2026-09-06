@@ -111,9 +111,10 @@ BitPairReference::BitPairReference(
 		swap = true; // have to endian swap U32s
 	}
 	
-	// Read # records
+	// Read # records.  The on-disk byte width of the count follows the
+	// runtime-selected index width (4 for .ht2, 8 for .ht2l).
 	TIndexOffU sz;
-	sz = readIndex<TIndexOffU>(f3, swap);
+	sz = readRefRecCount(f3, swap);
 	if(sz == 0) {
 		cerr << "Error: number of reference records is 0 in " << s3.c_str() << endl;
 		throw 1;
@@ -688,7 +689,7 @@ BitPairReference::szsFromFasta(
 		writeIndex<int32_t>(fout3, 1, bigEndian); // endianness sentinel
         TIndexOff numSeqs = 0;
         sztot = fastaRefReadSizes(is, szs, parms, &bpout, numSeqs);
-        writeIndex<TIndexOffU>(fout3, (TIndexOffU)szs.size(), bigEndian); // write # records
+		writeRefRecCount(fout3, (TIndexOffU)szs.size(), bigEndian); // write # records
         for(size_t i = 0; i < szs.size(); i++) szs[i].write(fout3, bigEndian);
 		if(sztot.first == 0) {
 			cerr << "Error: No unambiguous stretches of characters in the input.  Aborting..." << endl;

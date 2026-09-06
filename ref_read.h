@@ -32,6 +32,7 @@
 #include "word_io.h"
 #include "ds.h"
 #include "endian_swap.h"
+#include "btypes.h"
 
 using namespace std;
 
@@ -70,6 +71,42 @@ protected:
  * lose information about stretches of ambiguous characters at the end
  * of reference sequences).
  */
+// On-disk byte width of reference-record (offset/len) fields.  This follows the
+// RUNTIME-selected index width (g_curWidth): a 32-bit index (.ht2) stores 4-byte
+// off/len, a 64-bit index (.ht2l) stores 8-byte.  The internal TIndexOffU type
+// (compile-time, from -DBOWTIE_64BIT_INDEX) stays widened; only the on-disk
+// byte width must match the index being read/written (see RefRecord::RefRecord
+// and RefRecord::write).
+static inline size_t refRecOffByteSize() {
+    return (g_curWidth == IndexWidth::W64) ? 8 : 4;
+}
+
+// Read an on-disk width-sized (4 or 8 byte) unsigned value, widening to
+// TIndexOffU.  Used for the reference-record count in the .3.ht2/.3.ht2l file,
+// whose byte width likewise follows the runtime-selected index width.
+static inline TIndexOffU readRefRecCount(FILE* in, bool swap) {
+    size_t w = refRecOffByteSize();
+    if(w == 4) {
+        uint32_t v;
+        if(fread(&v, 4, 1, in) != 1) { assert(false); return 0; }
+        return (TIndexOffU)(swap ? endianSwapU32(v) : v);
+    }
+    uint64_t v;
+    if(fread(&v, 8, 1, in) != 1) { assert(false); return 0; }
+    return (TIndexOffU)(swap ? endianSwapU64(v) : v);
+}
+
+// Write an on-disk width-sized (4 or 8 byte) unsigned value from a widened
+// TIndexOffU.  Matches readRefRecCount.
+static inline void writeRefRecCount(std::ostream& out, TIndexOffU v, bool be) {
+    size_t w = refRecOffByteSize();
+    if(w == 4) {
+        writeU32(out, (uint32_t)v, be);
+    } else {
+        writeIndex<TIndexOffU>(out, v, be);
+    }
+}
+
 struct RefRecord {
 	RefRecord() : off(), len(), first() { }
 	RefRecord(TIndexOffU _off, TIndexOffU _len, bool _first) :
@@ -78,22 +115,45 @@ struct RefRecord {
 
 	RefRecord(FILE *in, bool swap) {
 		assert(in != NULL);
-		if(!fread(&off, OFF_SIZE, 1, in)) {
-			cerr << "Error reading RefRecord offset from FILE" << endl;
-			throw 1;
+		size_t w = refRecOffByteSize();
+		if(w == 4) {
+			uint32_t off32, len32;
+			if(fread(&off32, 4, 1, in) != 1) {
+				cerr << "Error reading RefRecord offset from FILE" << endl;
+				throw 1;
+			}
+			if(swap) off32 = endianSwapU32(off32);
+			off = (TIndexOffU)off32;
+			if(fread(&len32, 4, 1, in) != 1) {
+				cerr << "Error reading RefRecord offset from FILE" << endl;
+				throw 1;
+			}
+			if(swap) len32 = endianSwapU32(len32);
+			len = (TIndexOffU)len32;
+		} else {
+			if(fread(&off, 8, 1, in) != 1) {
+				cerr << "Error reading RefRecord offset from FILE" << endl;
+				throw 1;
+			}
+			if(swap) off = endianSwapIndex(off);
+			if(fread(&len, 8, 1, in) != 1) {
+				cerr << "Error reading RefRecord offset from FILE" << endl;
+				throw 1;
+			}
+			if(swap) len = endianSwapIndex(len);
 		}
-		if(swap) off = endianSwapIndex(off);
-		if(!fread(&len, OFF_SIZE, 1, in)) {
-			cerr << "Error reading RefRecord offset from FILE" << endl;
-			throw 1;
-		}
-		if(swap) len = endianSwapIndex(len);
 		first = fgetc(in) ? true : false;
 	}
 
 	void write(std::ostream& out, bool be) {
-		writeIndex<TIndexOffU>(out, off, be);
-		writeIndex<TIndexOffU>(out, len, be);
+		size_t w = refRecOffByteSize();
+		if(w == 4) {
+			writeU32(out, (uint32_t)off, be);
+			writeU32(out, (uint32_t)len, be);
+		} else {
+			writeIndex<TIndexOffU>(out, off, be);
+			writeIndex<TIndexOffU>(out, len, be);
+		}
 		out.put(first ? 1 : 0);
 	}
 

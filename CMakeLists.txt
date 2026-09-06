@@ -183,6 +183,20 @@ add_executable(hisat3n main.cpp)
 target_link_libraries(hisat3n PRIVATE hisat3n_static)
 
 # ---------------------------------------------------------------------------
+# Command-name shims: historical official-style entry points.
+#   hisat-3n       -> align route
+#   hisat-3n-build -> build route
+# main.cpp's argv[0] inspection dispatches to the matching route, so these
+# are plain symlinks to the single binary (no separate executables).
+# ---------------------------------------------------------------------------
+add_custom_command(TARGET hisat3n POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:hisat3n>
+            $<TARGET_FILE_DIR:hisat3n>/hisat-3n
+    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:hisat3n>
+            $<TARGET_FILE_DIR:hisat3n>/hisat-3n-build
+    COMMENT "Creating hisat-3n / hisat-3n-build symlinks")
+
+# ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
@@ -191,3 +205,9 @@ install(TARGETS hisat3n hisat3n_static hisat3n_shared
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+install(CODE "
+    execute_process(COMMAND \"${CMAKE_COMMAND}\" -E create_symlink
+        hisat3n \"${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/hisat-3n\")
+    execute_process(COMMAND \"${CMAKE_COMMAND}\" -E create_symlink
+        hisat3n \"${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/hisat-3n-build\")
+")

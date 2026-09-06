@@ -161,12 +161,12 @@ reverseRefRecords(
  * Reads the next sequence from the given FASTA file and appends it to
  * the end of dst, optionally reversing it.
  */
-template <typename TStr>
+template<typename TStr, typename index_t>
 static RefRecord fastaRefReadAppend(
 	FileBuf& in,             // input file
 	bool first,              // true iff this is the first record in the file
 	TStr& dst,               // destination buf for parsed characters
-	TIndexOffU& dstoff,          // index of next character in dst to assign
+	index_t& dstoff,          // index of next character in dst to assign
 	RefReadInParams& rparms, // 
 	string* name = NULL)     // put parsed FASTA name here
 {

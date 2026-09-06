@@ -43,6 +43,10 @@ typedef int TIndexOff;
 
 #endif /* BOWTIE_64BIT_INDEX */
 
-extern const std::string gfm_ext;
+// Runtime index-width selector (32-bit .ht2 vs 64-bit .ht2l).
+enum class IndexWidth : unsigned char { W32, W64 };
+extern IndexWidth g_curWidth;
+extern const std::string& current_gfm_ext();
+extern void set_current_width(IndexWidth w);
 
 #endif	/* BOWTIE_INDEX_TYPES_H */

@@ -22,15 +22,18 @@
 
 using namespace std;
 
-#ifdef BOWTIE_64BIT_INDEX
+static const std::string kHt2("ht2");
+static const std::string kHt2l("ht2l");
 
-const std::string gfm_ext("ht2l");
+IndexWidth g_curWidth = IndexWidth::W64;
 
-#else
+const std::string& current_gfm_ext() {
+    return g_curWidth == IndexWidth::W64 ? kHt2l : kHt2;
+}
 
-const std::string gfm_ext("ht2");
-
-#endif  // BOWTIE_64BIT_INDEX
+void set_current_width(IndexWidth w) {
+    g_curWidth = w;
+}
 
 string gLastIOErrMsg;
 
@@ -48,14 +51,14 @@ string adjustEbwtBase(const string& cmdline,
     string str = gfmFileBase;
     ifstream in;
     if(verbose) cout << "Trying " << str.c_str() << endl;
-    in.open((str + ".1." + gfm_ext).c_str(), ios_base::in | ios::binary);
+    in.open((str + ".1." + current_gfm_ext()).c_str(), ios_base::in | ios::binary);
     if(!in.is_open()) {
         if(verbose) cout << "  didn't work" << endl;
         in.close();
         if(getenv("HISAT2_INDEXES") != NULL) {
             str = string(getenv("HISAT2_INDEXES")) + "/" + gfmFileBase;
             if(verbose) cout << "Trying " << str.c_str() << endl;
-            in.open((str + ".1." + gfm_ext).c_str(), ios_base::in | ios::binary);
+            in.open((str + ".1." + current_gfm_ext()).c_str(), ios_base::in | ios::binary);
             if(!in.is_open()) {
                 if(verbose) cout << "  didn't work" << endl;
                 in.close();

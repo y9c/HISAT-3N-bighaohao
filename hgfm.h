@@ -90,8 +90,8 @@ public:
                  useHaplotype,
                  true)
 	{
-		this->_in1Str = in + ".5." + gfm_ext;
-		this->_in2Str = in + ".5." + gfm_ext;
+		this->_in1Str = in + ".5." + current_gfm_ext();
+		this->_in2Str = in + ".5." + current_gfm_ext();
 		readIntoMemory(
 					   in5,
 					   in6,
@@ -1603,8 +1603,8 @@ public:
     _in5(NULL),
     _in6(NULL)
     {
-        _in5Str = in + ".5." + gfm_ext;
-        _in6Str = in + ".6." + gfm_ext;
+        _in5Str = in + ".5." + current_gfm_ext();
+        _in6Str = in + ".6." + current_gfm_ext();
     }
 	
 	/// Construct a HGFM from the given header parameters and string
@@ -1990,8 +1990,8 @@ HGFM<index_t, local_index_t>::HGFM(
     _in5(NULL),
     _in6(NULL)
 {
-    _in5Str = outfile + ".5." + gfm_ext;
-    _in6Str = outfile + ".6." + gfm_ext;
+    _in5Str = outfile + ".5." + current_gfm_ext();
+    _in6Str = outfile + ".6." + current_gfm_ext();
     
     // const bool repeat_index = (parent_szs != NULL);
 
@@ -2078,7 +2078,7 @@ HGFM<index_t, local_index_t>::HGFM(
                     } else {
                         local_recs.back().off = 0;
                     }
-                    local_recs.back().len = std::min(next_cumlen, local_off + local_index_size) - std::max(local_off, cumlen + rec.off);
+                    local_recs.back().len = std::min(next_cumlen, local_off + local_index_size) - std::max(local_off, cumlen + (index_t)rec.off);
                 }
                 local_recs.back().first = (local_recs.size() == 1);
             }

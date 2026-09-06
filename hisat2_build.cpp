@@ -48,13 +48,14 @@
 #include <iostream>
 #include <vector>
 
-MemoryTally gMemTally;
+// Defined in hisat2.cpp; shared across align+build in the single binary.
+extern MemoryTally  gMemTally;
 // Build parameters
 int verbose;
 static int sanityCheck;
 static int format;
-static TIndexOffU bmax;
-static TIndexOffU bmaxMultSqrt;
+static uint64_t bmax;
+static uint64_t bmaxMultSqrt;
 static uint32_t bmaxDivN;
 static int dcv;
 static int noDc;
@@ -88,9 +89,10 @@ static string repeat_info_fname;
 static string repeat_snp_fname;
 static string repeat_haplotype_fname;
 
-bool threeN = false;
+// threeN and base_change_entered are defined in hisat2.cpp (shared state).
+extern bool threeN;
+extern bool base_change_entered;
 bool repeatIndex = false;
-bool base_change_entered;
 char convertedFrom;
 char convertedTo;
 char convertedFromComplement;
@@ -172,7 +174,9 @@ enum {
     ARG_REPEAT_HAPLOTYPE,
     ARG_3N,
     ARG_REPEAT_INDEX,
-    ARG_BASE_CHANGE
+    ARG_BASE_CHANGE,
+    ARG_LARGE_INDEX,
+    ARG_SMALL_INDEX
 };
 
 /**
@@ -192,7 +196,7 @@ static void printUsage(ostream& out) {
     
 	out << "Usage: hisat2-build [options]* <reference_in> <ht2_index_base>" << endl
 	    << "    reference_in            comma-separated list of files with ref sequences" << endl
-	    << "    hisat2_index_base       write " << gfm_ext << " data to files with this dir/basename" << endl
+	    << "    hisat2_index_base       write " << current_gfm_ext() << " data to files with this dir/basename" << endl
         << "Options:" << endl
         << "    -c                      reference sequences given on cmd line (as" << endl
         << "                            <reference_in>)" << endl;
@@ -282,6 +286,8 @@ static struct option long_options[] = {
     {(char*)"3N",             no_argument,       0,            ARG_3N},
     {(char*)"repeat-index",   no_argument,       0,            ARG_REPEAT_INDEX},
     {(char*)"base-change",    required_argument, 0,            ARG_BASE_CHANGE},
+    {(char*)"large-index",    no_argument,       0,            ARG_LARGE_INDEX},
+    {(char*)"small-index",    no_argument,       0,            ARG_SMALL_INDEX},
 	{(char*)0, 0, 0, 0} // terminator
 };
 
@@ -388,12 +394,12 @@ static void parseOptions(int argc, const char **argv) {
                 repeat_haplotype_fname = optarg;
                 break;
 			case ARG_BMAX:
-				bmax = parseNumber<TIndexOffU>(1, "--bmax arg must be at least 1");
+				bmax = parseNumber<uint64_t>(1, "--bmax arg must be at least 1");
 				bmaxMultSqrt = OFF_MASK; // don't use multSqrt
 				bmaxDivN = 0xffffffff;     // don't use multSqrt
 				break;
 			case ARG_BMAX_MULT:
-				bmaxMultSqrt = parseNumber<TIndexOffU>(1, "--bmaxmultsqrt arg must be at least 1");
+				bmaxMultSqrt = parseNumber<uint64_t>(1, "--bmaxmultsqrt arg must be at least 1");
 				bmax = OFF_MASK;     // don't use bmax
 				bmaxDivN = 0xffffffff; // don't use multSqrt
 				break;
@@ -438,6 +444,10 @@ static void parseOptions(int argc, const char **argv) {
 
                 base_change_entered = true;
             }
+            case ARG_LARGE_INDEX:
+            case ARG_SMALL_INDEX:
+                // width selection is handled by selectBuildWidth before this function
+                break;
 			case 'a': autoMem = false; break;
 			case 'q': verbose = false; break;
 			case 's': sanityCheck = true; break;
@@ -490,7 +500,7 @@ extern void initializeCntBit();
  * Drive the index construction process and optionally sanity-check the
  * result.
  */
-template<typename TStr>
+template<typename index_t, typename TStr>
 static void driver(
                    const string& infile,
                    EList<string>& infiles,
@@ -554,8 +564,8 @@ static void driver(
         cerr << "Warning: All fasta inputs were empty" << endl;
         throw 1;
     }
-    filesWritten.push_back(outfile + ".1." + gfm_ext);
-    filesWritten.push_back(outfile + ".2." + gfm_ext);
+    filesWritten.push_back(outfile + ".1." + current_gfm_ext());
+    filesWritten.push_back(outfile + ".2." + current_gfm_ext());
     // Vector for the ordered list of "records" comprising the input
     // sequences.  A record represents a stretch of unambiguous
     // characters in one of the input sequences.
@@ -565,8 +575,8 @@ static void driver(
         if(verbose) cerr << "Reading reference sizes" << endl;
         Timer _t(cerr, "  Time reading reference sizes: ", verbose);
         if(!reverse && (writeRef || justRef)) {
-            filesWritten.push_back(outfile + ".3." + gfm_ext);
-            filesWritten.push_back(outfile + ".4." + gfm_ext);
+            filesWritten.push_back(outfile + ".3." + current_gfm_ext());
+            filesWritten.push_back(outfile + ".4." + current_gfm_ext());
             sztot = BitPairReference::szsFromFasta(is, outfile, bigEndian, refparams, szs, sanityCheck);
             if (threeN) {
                 // save the unchanged reference in .3.ht2 and .4.ht2
@@ -586,14 +596,14 @@ static void driver(
     assert_gt(szs.size(), 0);
 
     // Construct index from input strings and parameters
-    filesWritten.push_back(outfile + ".5." + gfm_ext);
-    filesWritten.push_back(outfile + ".6." + gfm_ext);
-    filesWritten.push_back(outfile + ".7." + gfm_ext);
-    filesWritten.push_back(outfile + ".8." + gfm_ext);
+    filesWritten.push_back(outfile + ".5." + current_gfm_ext());
+    filesWritten.push_back(outfile + ".6." + current_gfm_ext());
+    filesWritten.push_back(outfile + ".7." + current_gfm_ext());
+    filesWritten.push_back(outfile + ".8." + current_gfm_ext());
     TStr s;
-    GFM<TIndexOffU>* gfm = NULL;
+    GFM<index_t>* gfm = NULL;
     if(!repeat) { // base index
-        gfm = new HGFM<TIndexOffU>(
+        gfm = new HGFM<index_t>(
                 s,
                 packed,
                 1,  // TODO: maybe not?
@@ -618,7 +628,7 @@ static void driver(
                 noDc? 0 : dcv,// difference-cover period
                 is,           // list of input streams
                 szs,          // list of reference sizes
-                (TIndexOffU)sztot.first,  // total size of all unambiguous ref chars
+                (index_t)sztot.first,  // total size of all unambiguous ref chars
                 refparams,    // reference read-in parameters
                 localindex,   // create local indexes?
                 parent_szs,   // parent szs
@@ -629,7 +639,7 @@ static void driver(
                 autoMem,      // pass exceptions up to the toplevel so that we can adjust memory settings automatically
                 sanityCheck); // verify results and internal consistency
     } else { // repeat index
-        gfm = new RFM<TIndexOffU>(
+        gfm = new RFM<index_t>(
                 s,
                 packed,
                 1,  // TODO: maybe not?
@@ -654,7 +664,7 @@ static void driver(
                 noDc? 0 : dcv,// difference-cover period
                 is,           // list of input streams
                 szs,          // list of reference sizes
-                (TIndexOffU)sztot.first,  // total size of all unambiguous ref chars
+                (index_t)sztot.first,  // total size of all unambiguous ref chars
                 refparams,    // reference read-in parameters
                 localindex,   // create local indexes?
                 parent_szs,   // parent szs
@@ -695,10 +705,10 @@ static void driver(
         gfm->evictFromMemory();
         {
             SString<char> joinedss;
-            GFM<>::join<SString<char> >(
+            GFM<index_t>::template join<SString<char> >(
                     is,          // list of input streams
                     szs,         // list of reference sizes
-                    (TIndexOffU)sztot.first, // total size of all unambiguous ref chars
+                    (index_t)sztot.first, // total size of all unambiguous ref chars
                     refparams,   // reference read-in parameters
                     seed,        // pseudo-random number generator seed
                     joinedss);
@@ -722,11 +732,12 @@ static void driver(
 
 static const char *argv0 = NULL;
 
-extern "C" {
 /**
- * main function.  Parses command-line arguments.
+ * main index-build function.  Parses command-line arguments.  Templated on
+ * index_t so the build pipeline is instantiated for the chosen width.
  */
-int hisat2_build(int argc, const char **argv) {
+template<class index_t>
+int hisat2_build_impl(int argc, const char **argv) {
     string outfile;
 	try {
 		// Reset all global state, including getopt state
@@ -793,16 +804,16 @@ int hisat2_build(int argc, const char **argv) {
         
         if(!lineRate_provided) {
             if(snp_fname == "" && ss_fname == "" && exon_fname == "") {
-                lineRate = GFM<TIndexOffU>::default_lineRate_fm;
+                lineRate = GFM<index_t>::default_lineRate_fm;
             } else {
-                lineRate = GFM<TIndexOffU>::default_lineRate_gfm;
+                lineRate = GFM<index_t>::default_lineRate_gfm;
             }
         }
 
 		// Optionally summarize
 		if(verbose) {
 			cerr << "Settings:" << endl
-				 << "  Output files: \"" << outfile.c_str() << (threeN?".3n":"") << ".*." << gfm_ext << "\"" << endl
+				 << "  Output files: \"" << outfile.c_str() << (threeN?".3n":"") << ".*." << current_gfm_ext() << "\"" << endl
 				 << "  Line rate: " << lineRate << " (line is " << (1<<lineRate) << " bytes)" << endl
 				 << "  Lines per side: " << linesPerSide << " (side is " << ((1<<lineRate)*linesPerSide) << " bytes)" << endl
 				 << "  Offset rate: " << offRate << " (one in " << (1<<offRate) << ")" << endl
@@ -878,7 +889,7 @@ int hisat2_build(int argc, const char **argv) {
                         }
                     }
 
-                    driver<SString<char> >(infile,
+                    driver<index_t, SString<char> >(infile,
                                            infiles,
                                            snp_fname,
                                            ht_fname,
@@ -904,7 +915,7 @@ int hisat2_build(int argc, const char **argv) {
                         }
                         EList<string> repeat_infiles(MISC_CAT);
                         tokenize(repeat_ref_fname_3N, ",", repeat_infiles);
-                        driver<SString<char> >(repeat_ref_fname_3N,
+                        driver<index_t, SString<char> >(repeat_ref_fname_3N,
                                                repeat_infiles,
                                                repeat_snp_fname,
                                                repeat_haplotype_fname,
@@ -923,7 +934,7 @@ int hisat2_build(int argc, const char **argv) {
                         string repeat_info_fname_3N = outfile + tag + ".rep.info";
                         EList<string> repeat_infiles(MISC_CAT);
                         tokenize(repeat_ref_fname_3N, ",", repeat_infiles);
-                        driver<SString<char> >(repeat_ref_fname_3N,
+                        driver<index_t, SString<char> >(repeat_ref_fname_3N,
                                                repeat_infiles,
                                                repeat_snp_fname,
                                                repeat_haplotype_fname,
@@ -966,5 +977,60 @@ int hisat2_build(int argc, const char **argv) {
 		deleteIdxFiles(outfile, writeRef || justRef, justRef);
 		return e;
 	}
+} // hisat2_build_impl()
+
+static long long sumRefSizes(const std::string& list) {
+    long long total = 0;
+    EList<string> files(MISC_CAT);
+    tokenize(list, ",", files);
+    for(size_t i = 0; i < files.size(); i++) {
+        std::ifstream in(files[i].c_str());
+        if(!in.is_open()) return 0;
+        std::string line;
+        while(std::getline(in, line)) {
+            if(line.empty() || line[0] == '>') continue;
+            if(line[line.size()-1] == '\r') line.resize(line.size()-1);
+            total += (long long)line.size();
+        }
+    }
+    return total;
+}
+
+static long long sumCmdlineSizes(const std::string& list) {
+    long long total = 0;
+    EList<string> seqs(MISC_CAT);
+    tokenize(list, ",", seqs);
+    for(size_t i = 0; i < seqs.size(); i++) total += (long long)seqs[i].length();
+    return total;
+}
+
+// Width: --large-index/--small-index wins, else >=4 Gb reference -> 64-bit.
+static IndexWidth selectBuildWidth(int argc, const char** argv) {
+    opterr = optind = 1;
+    bool cmdline = false, forceLong = false, forceSmall = false;
+    int oidx = 0;
+    int o;
+    while((o = getopt_long(argc, const_cast<char**>(argv), short_options, long_options, &oidx)) != -1) {
+        switch(o) {
+            case 'c': cmdline = true; break;
+            case ARG_LARGE_INDEX: forceLong = true; break;
+            case ARG_SMALL_INDEX: forceSmall = true; break;
+            default: break;
+        }
+    }
+    if(forceLong)  return IndexWidth::W64;
+    if(forceSmall) return IndexWidth::W32;
+    if(optind >= argc) return IndexWidth::W64;
+    long long total = cmdline ? sumCmdlineSizes(argv[optind]) : sumRefSizes(argv[optind]);
+    if(total >= (4LL << 30)) return IndexWidth::W64;
+    return IndexWidth::W32;
+}
+
+extern "C" {
+int hisat2_build(int argc, const char** argv) {
+    IndexWidth w = selectBuildWidth(argc, argv);
+    set_current_width(w);
+    return (w == IndexWidth::W64) ? hisat2_build_impl<uint64_t>(argc, argv)
+                                  : hisat2_build_impl<uint32_t>(argc, argv);
 }
 }

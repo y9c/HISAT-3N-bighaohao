@@ -48,8 +48,8 @@ BitPairReference::BitPairReference(
 	useShmem_(useShmem),
 	verbose_(verbose)
 {
-	string s3 = in + ".3." + gfm_ext;
-	string s4 = in + ".4." + gfm_ext;
+	string s3 = in + ".3." + current_gfm_ext();
+	string s4 = in + ".4." + current_gfm_ext();
 	
 	FILE *f3, *f4;
 	if((f3 = fopen(s3.c_str(), "rb")) == NULL) {
@@ -670,8 +670,8 @@ BitPairReference::szsFromFasta(
 	RefReadInParams parms = refparams;
 	std::pair<size_t, size_t> sztot;
 	if(!outfile.empty()) {
-		string file3 = outfile + ".3." + gfm_ext;
-		string file4 = outfile + ".4." + gfm_ext;
+		string file3 = outfile + ".3." + current_gfm_ext();
+		string file4 = outfile + ".4." + current_gfm_ext();
 		// Open output stream for the '.3.gfm_ext' file which will
 		// hold the size records.
 		ofstream fout3(file3.c_str(), ios::binary);

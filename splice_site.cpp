@@ -650,16 +650,17 @@ void SpliceSiteDB::print_impl(
     if(ss != NULL) ss_list.push_back(*ss);
 }
 
-void SpliceSiteDB::read(const GFM<TIndexOffU>& gfm, const EList<ALT<TIndexOffU> >& alts)
+template<typename index_t>
+void SpliceSiteDB::read(const GFM<index_t>& gfm, const EList<ALT<index_t> >& alts)
 {
     EList<Exon> exons;
     _empty = false;
     assert_eq(_numRefs, _refnames.size());
     for(size_t i = 0; i < alts.size(); i++) {
-        const ALT<TIndexOffU>& alt = alts[i];
+        const ALT<index_t>& alt = alts[i];
         if(!alt.splicesite() && !alt.exon()) continue;
         if(alt.left > alt.right) continue;
-        TIndexOffU ref = 0, left = 0, tlen = 0;
+        index_t ref = 0, left = 0, tlen = 0;
         char fw = alt.fw;
         bool straddled2 = false;
         gfm.joinedToTextOff(
@@ -671,7 +672,7 @@ void SpliceSiteDB::read(const GFM<TIndexOffU>& gfm, const EList<ALT<TIndexOffU> 
                             true,         // reject straddlers?
                             straddled2);  // straddled?
         assert_lt(ref, _spliceSites.size());
-        TIndexOffU right = left + (alt.right - alt.left);
+        index_t right = left + (alt.right - alt.left);
         if(alt.splicesite()) {
             left -= 1; right += 1;
             _spliceSites[ref].expand();
@@ -723,6 +724,9 @@ void SpliceSiteDB::read(const GFM<TIndexOffU>& gfm, const EList<ALT<TIndexOffU> 
         _exons.sort();
     }
 }
+
+template void SpliceSiteDB::read<uint32_t>(const GFM<uint32_t>&, const EList<ALT<uint32_t> >&);
+template void SpliceSiteDB::read<uint64_t>(const GFM<uint64_t>&, const EList<ALT<uint64_t> >&);
 
 void SpliceSiteDB::read(ifstream& in, bool known)
 {

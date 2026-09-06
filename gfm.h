@@ -688,8 +688,8 @@ public:
 		packed_ = false;
 		_useMm = useMm;
 		useShmem_ = useShmem;
-		_in1Str = in + ".1." + gfm_ext;
-		_in2Str = in + ".2." + gfm_ext;
+		_in1Str = in + ".1." + current_gfm_ext();
+		_in2Str = in + ".2." + current_gfm_ext();
 
         if(skipLoading) return;
 		
@@ -720,8 +720,8 @@ public:
         EList<Haplotype<index_t> >& haplotypes = altdb->haplotypes();
         EList<string>& altnames = altdb->altnames();
         alts.clear(); altnames.clear();
-        string in7Str = in + ".7." + gfm_ext;
-        string in8Str = in + ".8." + gfm_ext;
+        string in7Str = in + ".7." + current_gfm_ext();
+        string in8Str = in + ".8." + current_gfm_ext();
         
         // open alts
         if(verbose || startVerbose) cerr << "Opening \"" << in7Str.c_str() << "\"" << endl;
@@ -1019,8 +1019,8 @@ public:
         ProcessorSupport ps;
         _usePOPCNTinstruction = ps.POPCNTenabled();
 #endif
-		_in1Str = outfile + ".1." + gfm_ext;
-		_in2Str = outfile + ".2." + gfm_ext;
+		_in1Str = outfile + ".1." + current_gfm_ext();
+		_in2Str = outfile + ".2." + current_gfm_ext();
 		packed_ = packed;
 		// Open output files
 		ofstream fout1(_in1Str.c_str(), ios::binary);
@@ -1376,8 +1376,8 @@ public:
                 }
                 
                 // Write SNPs into 7.ht2 and 8.ht2
-                string file7 = outfile + ".7." + gfm_ext;
-                string file8 = outfile + ".8." + gfm_ext;
+                string file7 = outfile + ".7." + current_gfm_ext();
+                string file8 = outfile + ".8." + current_gfm_ext();
                 
                 // Open output stream for the '.7.gfm_ext' file which will
                 // hold SNPs (except IDs).
@@ -3178,7 +3178,6 @@ public:
 		int i = 0;
 #ifdef POPCNT_CAPABILITY
         if(_usePOPCNTinstruction) {
-            //print('aaaa');
             usePOPCNT = true;
             int by = l._by + (l._bp > 0 ? 1 : 0);
             for(; i < by; i += 8) {
@@ -3622,7 +3621,7 @@ public:
 		// Extract and return appropriate bit-pair
 		return unpack_2b_from_8b(l.side(this->gfm())[l._by], l._bp);
 	}
-    //大耗时函数
+
 	/**
 	 * Return the final character in row i (i.e. the i'th character in the
 	 * BWT transform).  Note that the 'L' in the name of the function
@@ -3902,16 +3901,16 @@ public:
 		ASSERT_ONLY(, bool overrideSanity = false)
 		) const
 	{
-        if(rowL(l) != c) return (index_t)INDEX_MAX;     //主耗时
+        if(rowL(l) != c) return (index_t)INDEX_MAX;
         for(index_t i = 0; i < _zOffs.size(); i++) {
             if(row == _zOffs[i]) return (index_t)INDEX_MAX;
         }
 		index_t ret;
 		assert_lt(c, 4);
 		assert_geq(c, 0);
-		ret = countBt2Side(l, c);   //次耗时
+		ret = countBt2Side(l, c);
 		assert_lt(ret, this->_gh._gbwtLen);
-#ifndef NDEBUG      //if no def NDEBUG如果没有定义非调试版本--》如果现在是调试版本编译下面
+#ifndef NDEBUG
 		if(_sanity && !overrideSanity) {
 			// Make sure results match up with results from mapLFEx;
 			// be sure to override sanity-checking in the callee, or we'll
@@ -3970,7 +3969,7 @@ public:
     {
         assert_lt(c, 4);
         assert_geq(c, 0);
-        index_t top = mapLF1(row, l, c);    //调用malLF1
+        index_t top = mapLF1(row, l, c);
         if(top == (index_t)INDEX_MAX) return pair<index_t, index_t>(0, 0);
         if(gh().linearFM()) {
             if(node_range != NULL) {
@@ -4043,7 +4042,7 @@ public:
             if(row == _zOffs[i]) return pair<index_t, index_t>((index_t)INDEX_MAX, (index_t)INDEX_MAX);
         }
 
-        mapLF1(row, l); //次要耗时函数
+        mapLF1(row, l);
         index_t top = row;
         if(top == (index_t)INDEX_MAX) return pair<index_t, index_t>(0, 0);
         if(gh().linearFM()) {
@@ -4307,13 +4306,8 @@ public:
 	static const bool     default_noDc = false;
 	static const bool     default_useBlockwise = true;
 	static const uint32_t default_seed = 0;
-#ifdef BOWTIE_64BIT_INDEX
-    static const int      default_lineRate_gfm = 8;
-    static const int      default_lineRate_fm  = 7;
-#else
-	static const int      default_lineRate_gfm = 7;
-    static const int      default_lineRate_fm  = 6;
-#endif
+	static const int      default_lineRate_gfm = (sizeof(index_t) == 8 ? 8 : 7);
+	static const int      default_lineRate_fm  = (sizeof(index_t) == 8 ? 7 : 6);
 	static const int      default_offRate = 5;
 	static const int      default_offRatePlus = 0;
 	static const int      default_ftabChars = 10;
@@ -4440,7 +4434,7 @@ template <typename index_t>
 void readEbwtRefnames(const string& instr, EList<string>& refnames) {
     ifstream in;
     // Initialize our primary and secondary input-stream fields
-    in.open((instr + ".1." + gfm_ext).c_str(), ios_base::in | ios::binary);
+    in.open((instr + ".1." + current_gfm_ext()).c_str(), ios_base::in | ios::binary);
     if(!in.is_open()) {
         throw GFMFileOpenException("Cannot open file " + instr);
     }
@@ -6552,7 +6546,7 @@ template <typename index_t>
 void readGFMRefnames(const string& instr, EList<string>& refnames) {
     ifstream in;
     // Initialize our primary and secondary input-stream fields
-    in.open((instr + ".1." + gfm_ext).c_str(), ios_base::in | ios::binary);
+    in.open((instr + ".1." + current_gfm_ext()).c_str(), ios_base::in | ios::binary);
     if(!in.is_open()) {
         throw GFMFileOpenException("Cannot open file " + instr);
     }
@@ -6569,7 +6563,7 @@ template <typename index_t>
 int32_t GFM<index_t>::readVersionFlags(const string& instr, int& major, int& minor, string& extra_version) {
     ifstream in;
     // Initialize our primary and secondary input-stream fields
-    in.open((instr + ".1." + gfm_ext).c_str(), ios_base::in | ios::binary);
+    in.open((instr + ".1." + current_gfm_ext()).c_str(), ios_base::in | ios::binary);
     if(!in.is_open()) {
         throw GFMFileOpenException("Cannot open file " + instr);
     }

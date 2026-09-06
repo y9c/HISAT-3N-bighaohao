@@ -553,7 +553,7 @@ public:
     bool insideExon(uint32_t ref, uint32_t left, uint32_t right) const;
     
     void print(ofstream& out);
-    void read(const GFM<TIndexOffU>& gfm, const EList<ALT<TIndexOffU> >& alts);
+    template<typename index_t> void read(const GFM<index_t>& gfm, const EList<ALT<index_t> >& alts);
     void read(ifstream& in, bool known = false);
     
 private:

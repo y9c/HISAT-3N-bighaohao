@@ -325,8 +325,8 @@ public:
     _in1(NULL),
     _in2(NULL)
     {
-        _in1Str = in + ".1." + gfm_ext;
-        _in2Str = in + ".2." + gfm_ext;
+        _in1Str = in + ".1." + current_gfm_ext();
+        _in2Str = in + ".2." + current_gfm_ext();
     }
 	
 	/// Construct a HGFM from the given header parameters and string
@@ -690,8 +690,8 @@ RFM<index_t>::RFM(
     _in1(NULL),
     _in2(NULL)
 {
-    _in1Str = outfile + ".1." + gfm_ext;
-    _in2Str = outfile + ".2." + gfm_ext;
+    _in1Str = outfile + ".1." + current_gfm_ext();
+    _in2Str = outfile + ".2." + current_gfm_ext();
     
     // Open output files
     ofstream fout1(_in1Str.c_str(), ios::binary);

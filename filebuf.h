@@ -559,6 +559,7 @@ public:
 	 */
 	OutFileBuf() : name_("cout"), cur_(0), closed_(false) {
 		out_ = stdout;
+		setvbuf(out_, NULL, _IONBF, 0);
 	}
 	
 	/**

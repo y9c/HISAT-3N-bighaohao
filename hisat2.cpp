@@ -28,6 +28,8 @@
 #include <math.h>
 #include <utility>
 #include <limits>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "alphabet.h"
 #include "assert_helpers.h"
 #include "endian_swap.h"
@@ -60,7 +62,6 @@
 #include "repeat_kmer.h"
 #include "hisat2lib/ht2.h"
 //#include "utility_3n.h"
-#include <cstdio>
 
 
 using namespace std;
@@ -867,7 +868,7 @@ static void printUsage(ostream& out) {
     << "  " << tool_name.c_str() << " [options]* -x <ht2-idx> {-1 <m1> -2 <m2> | -U <r>} [-S <sam>]" << endl
 #endif
 	    << endl
-		<<     "  <ht2-idx>  Index filename prefix (minus trailing .X." << gfm_ext << ")." << endl
+		<<     "  <ht2-idx>  Index filename prefix (minus trailing .X." << current_gfm_ext() << ")." << endl
 	    <<     "  <m1>       Files with #1 mates, paired with files in <m2>." << endl;
 	if(wrapper == "basic-0") {
 		out << "             Could be gzip'ed (extension: .gz) or bzip2'ed (extension: .bz2)." << endl;
@@ -2159,54 +2160,82 @@ createPatsrcFactory(PairedPatternSource& _patsrc, int tid) {
 
 #define PTHREAD_ATTRS (PTHREAD_CREATE_JOINABLE | PTHREAD_CREATE_DETACHED)
 
-typedef TIndexOffU index_t;
 typedef uint16_t local_index_t;
 static PairedPatternSource*              multiseed_patsrc;
-static HGFM<index_t>*                    multiseed_gfm;
-static RFM<index_t>*                     multiseed_rgfm;
-//static HGFM<index_t>*                    multiseed_gfms[2];
-//static RFM<index_t>*                     multiseed_rgfms[2];
 static Scoring*                          multiseed_sc;
 static BitPairReference*                 multiseed_refs;
 static BitPairReference*                 multiseed_rrefs;
-//static BitPairReference*                 multiseed_refss[2];
-//static BitPairReference*                 multiseed_rrefss[2];
-static AlnSink<index_t>*                 multiseed_msink;
 static OutFileBuf*                       multiseed_metricsOfb;
 static SpliceSiteDB*                     ssdb;
-static ALTDB<index_t>*                   altdb;
-static RepeatDB<index_t>*                repeatdb;
-static ALTDB<index_t>*                   raltdb;
-
-static ALTDB<index_t> *altdbs_3N[2];
-static RepeatDB<index_t> *repeatdbs_3N[2];
-static ALTDB<index_t> *raltdbs_3N[2];
 static TranscriptomePolicy*              multiseed_tpol;
 static GraphPolicy*                      gpol;
 
+// Per-width alignment closure (index_t-bound state + driver/worker/search).
+template<class index_t>
+struct AlignCtx {
+    static HGFM<index_t>*                 multiseed_gfm;
+    static RFM<index_t>*                  multiseed_rgfm;
+    static AlnSink<index_t>*              multiseed_msink;
+    static ALTDB<index_t>*                altdb;
+    static RepeatDB<index_t>*             repeatdb;
+    static ALTDB<index_t>*                raltdb;
+    static ALTDB<index_t>*                altdbs_3N[2];
+    static RepeatDB<index_t>*             repeatdbs_3N[2];
+    static ALTDB<index_t>*                raltdbs_3N[2];
 
-class reference3N {
-public:
-    const HGFM<index_t>* multiseed_gfm[2];
-    const RFM<index_t>* multiseed_rgfm[2];
-    const BitPairReference* multiseed_rrefs[2];
+    class reference3N {
+    public:
+        const HGFM<index_t>* multiseed_gfm[2];
+        const RFM<index_t>* multiseed_rgfm[2];
+        const BitPairReference* multiseed_rrefs[2];
 
-    reference3N() {
+        reference3N() {
 
-    }
-
-    void load(EList<HGFM<index_t>* >& gfms_3N,
-              RFM<index_t>* rgfms_3N[2],
-              BitPairReference* rrefss[2]) {
-        for (int i = 0; i < 2; i++) {
-            multiseed_gfm[i] = gfms_3N[i];
-            multiseed_rgfm[i] = rgfms_3N[i];
-            multiseed_rrefs[i] = rrefss[i];
         }
-    }
+
+        void load(EList<HGFM<index_t>* >& gfms_3N,
+                  RFM<index_t>* rgfms_3N[2],
+                  BitPairReference* rrefss[2]) {
+            for (int i = 0; i < 2; i++) {
+                multiseed_gfm[i] = gfms_3N[i];
+                multiseed_rgfm[i] = rgfms_3N[i];
+                multiseed_rrefs[i] = rrefss[i];
+            }
+        }
+    };
+    static reference3N ref3N;
+
+    static void worker(void *vp);
+    static void search(
+        Scoring& sc,
+        TranscriptomePolicy& tpol,
+        GraphPolicy& gp,
+        PairedPatternSource& patsrc,
+        AlnSink<index_t>& msink,
+        EList<HGFM<index_t>* > gfms_3N,
+        RFM<index_t>* rgfms_3N[2],
+        BitPairReference* rrefss[2],
+        HGFM<index_t>* gfm,
+        RFM<index_t>* rgfm,
+        BitPairReference* refs,
+        BitPairReference* rrefs,
+        OutFileBuf *metricsOfb);
+    template<typename TStr> static void driver(
+        const char * type,
+        const string bt2indexBases[2],
+        const string& outfile);
 };
 
-reference3N ref3N;
+template<class index_t> HGFM<index_t>*     AlignCtx<index_t>::multiseed_gfm = nullptr;
+template<class index_t> RFM<index_t>*      AlignCtx<index_t>::multiseed_rgfm = nullptr;
+template<class index_t> AlnSink<index_t>*  AlignCtx<index_t>::multiseed_msink = nullptr;
+template<class index_t> ALTDB<index_t>*    AlignCtx<index_t>::altdb = nullptr;
+template<class index_t> RepeatDB<index_t>* AlignCtx<index_t>::repeatdb = nullptr;
+template<class index_t> ALTDB<index_t>*    AlignCtx<index_t>::raltdb = nullptr;
+template<class index_t> ALTDB<index_t>*    AlignCtx<index_t>::altdbs_3N[2] = {nullptr, nullptr};
+template<class index_t> RepeatDB<index_t>* AlignCtx<index_t>::repeatdbs_3N[2] = {nullptr, nullptr};
+template<class index_t> ALTDB<index_t>*    AlignCtx<index_t>::raltdbs_3N[2] = {nullptr, nullptr};
+template<class index_t> typename AlignCtx<index_t>::reference3N AlignCtx<index_t>::ref3N;
 
 /**
  * Metrics for measuring the work done by the outer read alignment
@@ -3340,12 +3369,9 @@ static inline void printEEScoreMsg(
  *   + If not identical, continue
  * -
  */
-//工作线程+主线程
-static void multiseedSearchWorker_hisat2(void *vp) {
+template<class index_t>
+void AlignCtx<index_t>::worker(void *vp) {
 	int tid = *((int*)vp);
-	//printf("start multiseedSearchWorker_hisat2 %d\n",tid);
-	//std::cout<<"start multiseedSearchWorker_hisat2 "<<tid<<std::endl;
-	
 
     if (threeN) {
         assert(ref3N.multiseed_gfm[0] != NULL);
@@ -3383,8 +3409,8 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 	// problems, or generally characterize performance.
 	
 	//const BitPairReference& refs   = *multiseed_refs;
-	auto_ptr<PatternSourcePerThreadFactory> patsrcFact(createPatsrcFactory(patsrc, tid)); //PatternSourcePerThreads 的抽象父工厂
-	auto_ptr<PatternSourcePerThread> ps(patsrcFact->create());		//读取 封装了单个线程与 PatternSource 的交互 
+	auto_ptr<PatternSourcePerThreadFactory> patsrcFact(createPatsrcFactory(patsrc, tid));
+	auto_ptr<PatternSourcePerThread> ps(patsrcFact->create());
 	
     // Instantiate an object for holding reporting-related parameters.
     if(maxSeeds == 0) {
@@ -3503,16 +3529,15 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 	rndArb.init((uint32_t)time(0));
 	int mergei = 0;
 	int mergeival = 16;
-	while(true) {			//总循环
+	while(true) {
 		bool success = false, done = false, paired = false;
-		ps->nextReadPair(success, done, paired, outType != OUTPUT_SAM);		//下一个读长
+		ps->nextReadPair(success, done, paired, outType != OUTPUT_SAM);
 		if(!success && done) {
 			break;
 		} else if(!success) {
 			continue;
 		}
 		TReadId rdid = ps->rdid();
-		//printf("now read %d %d\n",rdid,tid);
         if(nthreads > 1 && useTempSpliceSite) {
             assert_gt(tid, 0);
             assert_leq(tid, thread_rids.size());
@@ -3582,8 +3607,8 @@ static void multiseedSearchWorker_hisat2(void *vp) {
             bool gNofw3N = false;
             bool gNorc3N = false;
             // for threeN (3N) mode, we need to map the read 4 times. for regular mode, only 1 time.
-			while(retry || mappingCycle < nMappingCycle) {				//finishread 循环	3N跑4次
-				//printf("start once retry || mappingCycle < nMappingCycle %d\n",tid);
+			while(retry || mappingCycle < nMappingCycle) {
+
                 msinkwrap->resetInit_();
                 if (threeN) {
                     ps->changePlan3N(mappingCycle);
@@ -3604,7 +3629,7 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 				const size_t rdlen1 = ps->bufa().length();
 				const size_t rdlen2 = pair ? ps->bufb().length() : 0;
 				olm.bases += (rdlen1 + rdlen2);
-				msinkwrap->nextRead(			//取出
+				msinkwrap->nextRead(
                                    &ps->bufa(),
                                    pair ? &ps->bufb() : NULL,
                                    rdid,
@@ -3803,7 +3828,7 @@ static void multiseedSearchWorker_hisat2(void *vp) {
                         useRepeat = paired ? (ps->bufa().length() >= 100) && (ps->bufb().length() >= 100) :
                                          ps->bufa().length() >= 80;
                     }
-					//主要耗时函数
+
                     ret = splicedAligner.go(
                             sc,
                             pepol,
@@ -3873,7 +3898,7 @@ static void multiseedSearchWorker_hisat2(void *vp) {
                     assert_leq(prm.nUgFail,  streak[i]);
                     assert_leq(prm.nEeFail,  streak[i]);
                 }
-				// 锁重灾区
+
                 msinkwrap->finishRead(
                         NULL,
                         NULL,
@@ -3918,13 +3943,13 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 	return;
 }
 
-//每次对齐作业调用一次。设置指向共享全局数据结构的全局指针，创建每个线程的结构，然后进入搜索循环。
 /**
  * Called once per alignment job.  Sets up global pointers to the
  * shared global data structures, creates per-thread structures, then
  * enters the search loop.
  */
-static void multiseedSearch(
+template<class index_t>
+void AlignCtx<index_t>::search(
                             Scoring& sc,
                             TranscriptomePolicy& tpol,
                             GraphPolicy& gp,
@@ -3966,9 +3991,9 @@ static void multiseedSearch(
 		for(int i = 0; i < nthreads; i++) {
 			// Thread IDs start at 1
 			tids[i] = i+1;
-            threads[i] = new tthread::thread(multiseedSearchWorker_hisat2, (void*)&tids[i]);	//启动工作线程
+            threads[i] = new tthread::thread(AlignCtx<index_t>::worker, (void*)&tids[i]);
 		}
-		//printf("nthreads = %d\n,======end multiseedSearchWorker_hisat2",nthreads);
+
         for (int i = 0; i < nthreads; i++)
             threads[i]->join();
 
@@ -3983,8 +4008,9 @@ static string argstr;
 extern void initializeCntLut();
 extern void initializeCntBit();
 
+template<class index_t>
 template<typename TStr>
-static void driver(				//启用多个线程
+void AlignCtx<index_t>::driver(
 	const char * type,
 	const string bt2indexBases[2],
 	const string& outfile)
@@ -4142,7 +4168,7 @@ static void driver(				//启用多个线程
 
             rep_adjIdxBase_3N[j] = adjIdxBases_3N[j] + ".rep";
             {
-                std::ifstream infile((rep_adjIdxBase_3N[j] + ".1." + gfm_ext.c_str()).c_str());
+                std::ifstream infile((rep_adjIdxBase_3N[j] + ".1." + current_gfm_ext().c_str()).c_str());
                 rep_index_exists_3N[j] = infile.good();
             }
 
@@ -4233,7 +4259,7 @@ static void driver(				//启用多个线程
                 else                    khits = 10;
             }
         }
-    } else {			
+    } else {
         altdb = new ALTDB<index_t>();
         repeatdb = new RepeatDB<index_t>();
         raltdb = new ALTDB<index_t>();
@@ -4295,7 +4321,7 @@ static void driver(				//启用多个线程
         rep_adjIdxBase = adjIdxBase + ".rep";
 
         {
-            std::ifstream infile((rep_adjIdxBase + ".1." + gfm_ext.c_str()).c_str());
+            std::ifstream infile((rep_adjIdxBase + ".1." + current_gfm_ext().c_str()).c_str());
             rep_index_exists = infile.good();
         }
         if(rep_index_exists && use_repeat_index) {
@@ -4373,11 +4399,7 @@ static void driver(				//启用多个线程
 		nthreads,                // # threads
 		nthreads > 1,            // whether to be thread-safe
 		skipReads);              // first read will have this rdid
-	// 在类外创建并启动线程
-	//std::cout<<"start output_thread";
-    std::thread output_thread(&OutputQueue::get_output_from_queue_2, &oq);  // 传递类实例的指针
-	// 让线程在后台执行，不等待它完成
-    //output_thread.detach();
+	std::thread output_thread(&OutputQueue::get_output_from_queue_2, &oq);
 	{
 		Timer _t(cerr, "Time searching: ", timing);
 		// Set up penalities
@@ -4708,7 +4730,7 @@ static void driver(				//启用多个线程
 		// Do the search for all input reads
 		assert(patsrc != NULL);
 		assert(mssink != NULL);
-		multiseedSearch(		//每个启动多个工作线程
+		AlignCtx<index_t>::search(
                         sc,      // scoring scheme
                         tpol,
                         gpol,
@@ -4768,15 +4790,11 @@ static void driver(				//启用多个线程
                 }
             }
         }
-		//std::cout<<"begin flush==========="<<std::endl;
-		oq.flush(true);	//唯一一次flush
-		//std::cout<<"end flush==========="<<std::endl;
+		oq.flush(true);
 		assert_eq(oq.numStarted(), oq.numFinished());
 		assert_eq(oq.numStarted(), oq.numFlushed());
-		//std::cout<<"end assert==========="<<std::endl;
 		oq.endoutput();
 		output_thread.join();
-		//std::cout<<"end output===="<<std::endl;
 		delete patsrc;
 		delete mssink;
         delete ssdb;
@@ -4814,16 +4832,14 @@ static void driver(				//启用多个线程
 	}
 }
 
-// C++ name mangling is disabled for the bowtie() function to make it
-// easier to use Bowtie as a library.
-extern "C" {
-
 /**
- * Main bowtie entry function.  Parses argc/argv style command-line
+ * Main align entry function.  Parses argc/argv style command-line
  * options, sets global configuration variables, and calls the driver()
- * function.
+ * function.  Templated on index_t so the whole alignment pipeline is
+ * instantiated for the chosen 32-bit or 64-bit index width.
  */
-int hisat2(int argc, const char **argv) {	//主线程入口
+template<class index_t>
+int hisat2_impl(int argc, const char **argv) {
 	try {
 		// Reset all global state, including getopt state
 		opterr = optind = 1;
@@ -4872,10 +4888,10 @@ int hisat2(int argc, const char **argv) {	//主线程入口
             }
             if (threeN) {
                 bt2indexs[1] = bt2indexs[0];
-                if (fileExist(bt2indexs[0] + threeN_indexTags[0] + ".1." + gfm_ext)) {
+                if (fileExist(bt2indexs[0] + threeN_indexTags[0] + ".1." + current_gfm_ext())) {
                     bt2indexs[0] += threeN_indexTags[0];
                     bt2indexs[1] += threeN_indexTags[1];
-                } else if (fileExist(bt2indexs[0] + ".3n.1.1." + gfm_ext)) {
+                } else if (fileExist(bt2indexs[0] + ".3n.1.1." + current_gfm_ext())) {
                     bt2indexs[0] += ".3n.1";
                     bt2indexs[1] += ".3n.2";
                     if (!((usrInput_convertedFrom == 'C' && usrInput_convertedTo == 'T') ||
@@ -4974,9 +4990,7 @@ int hisat2(int argc, const char **argv) {	//主线程入口
 				cout << "Press key to continue..." << endl;
 				getchar();
 			}
-			//std::cout<<"start driver"<<std::endl;
-			driver<SString<char> >("DNA", bt2indexs, outfile);			//主线程耗时函数
-			//std::cout<<"end driver"<<std::endl;
+			AlignCtx<index_t>::template driver<SString<char> >("DNA", bt2indexs, outfile);
 		}
 		return 0;
 	} catch(std::exception& e) {
@@ -4994,5 +5008,61 @@ int hisat2(int argc, const char **argv) {	//主线程入口
 		}
 		return e;
 	}
-} // bowtie()
-} // extern "C"
+} // hisat2_impl()
+
+template struct AlignCtx<uint32_t>;
+template struct AlignCtx<uint64_t>;
+
+/*
+ * Probe for an existing .ht2l or .ht2 index file.  The base may contain a
+ * HISAT-3N conversion tag (e.g. genome.3n.CT), so fall back to a directory
+ * scan matching basename + ".1." + ext regardless of the tag.
+ */
+static bool findAny(const std::string& base, bool large) {
+    const char* ext = large ? "ht2l" : "ht2";
+    std::string direct = base + ".1." + ext;
+    if(fileExist(direct)) return true;
+    size_t slash = base.find_last_of('/');
+    std::string dirPath = (slash == std::string::npos) ? "." : base.substr(0, slash);
+    if(dirPath.empty()) dirPath = ".";
+    std::string basename = (slash == std::string::npos) ? base : base.substr(slash + 1);
+    DIR* d = opendir(dirPath.c_str());
+    if(d == NULL) return false;
+    struct dirent* ent;
+    bool found = false;
+    std::string suffix = std::string(".1.") + ext;
+    while((ent = readdir(d)) != NULL) {
+        std::string name(ent->d_name);
+        if(name.size() >= basename.size() + suffix.size() &&
+           name.compare(0, basename.size(), basename) == 0 &&
+           name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            found = true;
+            break;
+        }
+    }
+    closedir(d);
+    return found;
+}
+
+static IndexWidth detectIndexWidth(int argc, const char** argv) {
+    std::string base;
+    for(int i = 1; i < argc; i++) {
+        std::string a(argv[i]);
+        if(a == "-x" || a == "--index") {
+            if(i + 1 < argc) { base = argv[i + 1]; break; }
+        }
+    }
+    if(base.empty()) return IndexWidth::W64;
+    if(findAny(base, true))  return IndexWidth::W64;
+    if(findAny(base, false)) return IndexWidth::W32;
+    return IndexWidth::W64;
+}
+
+extern "C" {
+int hisat2(int argc, const char** argv) {
+    IndexWidth w = detectIndexWidth(argc, argv);
+    set_current_width(w);
+    return (w == IndexWidth::W64) ? hisat2_impl<uint64_t>(argc, argv)
+                                  : hisat2_impl<uint32_t>(argc, argv);
+}
+}

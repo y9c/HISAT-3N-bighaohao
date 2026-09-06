@@ -1,282 +1,184 @@
-cmake_minimum_required(VERSION 3.10)
-project(hisat-3n)
+cmake_minimum_required(VERSION 3.16)
+project(hisat3n VERSION 3.0.0 LANGUAGES CXX)
 
-# escape preprocessor definition 
-cmake_policy(SET CMP0005 NEW)
-
-if(NOT CMAKE_BUILD_TYPE)
-	set(CMAKE_BUILD_TYPE Release)
-endif()
-
-option(BOWTIE_MM "enable memory mapping" ON)
-option(BOWTIE_SHARED_MEM "enable shared memory mapping" OFF)
-option(USE_SRA "enable NCBI SRA Toolkit" OFF)
-
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_VERBOSE_MAKEFILE true)
-set(CMAKE_EXPORT_COMPILE_COMMANDS on)
-set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
-
-# Common Flag
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2 -L`jemalloc-config --libdir` -Wl,-rpath,`jemalloc-config --libdir` -ljemalloc -lm -lstdc++ -pthread")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2 /GLOBALFS/sysu_hpcscc_2/lh/asc25/depend/jemalloc-5.3.0/build/lib/libjemalloc.a -lm -lstdc++ -pthread")
-# Debug/Release Flag
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g -funroll-loops -march=native -fopenmp  -faligned-new")
-
-set(INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for executables")
+# ---------------------------------------------------------------------------
+# Options
+# ---------------------------------------------------------------------------
+option(BOWTIE_MM         "Enable memory-mapped index"              ON)
+option(BOWTIE_SHARED_MEM "Enable shared-memory index"              OFF)
+option(USE_SRA           "Enable NCBI SRA Toolkit input"           OFF)
+option(USE_64BIT_INDEX   "Use 64-bit (large) index offsets (-l)"   ON)
 
 if(MINGW OR CYGWIN)
-    option(BOWTIE_MM "Memory mapped files not supported on Windows" OFF)
-    option(BOWTIE_SHARED_MEM "Shared memory not supported on Windows" OFF)
-endif()
- 
-if (USE_SRA AND APPLE)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmacosx-version-min=10.6")
+    set(BOWTIE_MM OFF)
 endif()
 
-set(HISAT2_BIN_LIST
-	hisat2-build-s
-	hisat2-build-l
-	hisat2-align-s
-	hisat2-align-l
-	hisat2-inspect-s
-	hisat2-inspect-l
-	hisat2-repeat
-    )
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(HISAT2_LIB_LIST
-	hisat2lib
-	)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
 
-
-# Source Codes
-set(SHARED_CPPS
-	alphabet.cpp
-	ccnt_lut.cpp
-	ds.cpp
-	edit.cpp
-	gfm.cpp
-	limit.cpp
-	multikey_qsort.cpp
-	random_source.cpp
-	reference.cpp
-	ref_read.cpp
-	shmem.cpp
-	tinythread.cpp
-	)
-
-set(SEARCH_CPPS
-	aligner_bt.cpp
-	aligner_cache.cpp
-	aligner_driver.cpp
-	aligner_result.cpp
-	aligner_seed.cpp
-	aligner_seed2.cpp
-	aligner_seed_policy.cpp
-	aligner_sw.cpp
-	aligner_sw_driver.cpp
-	aligner_swsse.cpp
-	aligner_swsse_ee_i16.cpp
-	aligner_swsse_ee_u8.cpp
-	aligner_swsse_loc_i16.cpp
-	aligner_swsse_loc_u8.cpp
-	aln_sink.cpp
-	dp_framer.cpp
-	outq.cpp
-	pat.cpp
-	pe.cpp
-	presets.cpp
-	qual.cpp
-	random_util.cpp
-	read_qseq.cpp
-	ref_coord.cpp mask.cpp
-	scoring.cpp
-	simple_func.cpp
-	splice_site.cpp
-	sse_util.cpp
-	unique.cpp
-	hisat2_main.cpp
-	hisat2.cpp
-	)
-
-set(BUILD_CPPS
-	diff_sample.cpp
-	hisat2_build_main.cpp
-	hisat2_build.cpp
-	)
-
-set(REPEAT_CPPS
-	aligner_bt.cpp
-	aligner_result.cpp
-	aligner_sw_driver.cpp
-	aligner_sw.cpp
-	aligner_swsse_ee_i16.cpp
-	aligner_swsse_ee_u8.cpp
-	aligner_swsse_loc_i16.cpp
-	aligner_swsse_loc_u8.cpp
-	aligner_swsse.cpp
-	bit_packed_array.cpp
-	bit_packed_array.h
-	dp_framer.cpp
-	mask.cpp
-	qual.cpp
-	repeat_builder.cpp
-	scoring.cpp
-	simple_func.cpp
-	diff_sample.cpp
-	hisat2_repeat_main.cpp
-	hisat2_repeat.cpp
-	)
-
-set(INSPECT_CPPS
-	hisat2_inspect.cpp
-	)
-
-
-set(HT2LIB_CPPS
-	hisat2lib/ht2_init.cpp
-	hisat2lib/ht2_repeat.cpp
-	hisat2lib/ht2_index.cpp
-	)
-
-set(THREE_N_CPPS
-		alignment_3n.cpp
-		position_3n.cpp
-		utility_3n.cpp)
-
-set(THREE_N_TABLE_CPPS
-		hisat_3n_table.cpp)
-
-string(TIMESTAMP BUILD_DATE)
 file(STRINGS HISAT2_VERSION HISAT2_VERSION)
-execute_process(COMMAND ${CMAKE_CXX_COMPILER} -v OUTPUT_VARIABLE COMPILER_VERSION)
+string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
 
-add_definitions(
-	-DBOWTIE2
-    -DBUILD_HOST="${CMAKE_HOST_SYSTEM}"
-	-DBUILD_TIME="${BUILD_DATE}"
-    -DCOMPILER_VERSION="${CMAKE_CXX_COMPILER} ${CMAKE_CXX_COMPILER_VERSION}"
-    -DHISAT2_VERSION="${HISAT2_VERSION}"
-	-D_LARGEFILE_SOURCE
-	-D_FILE_OFFSET_BITS=64
-	-D_GNU_SOURCE
-	-DPOPCNT_CAPABILITY
-	)
-
-
-include_directories(third_party)
-
-link_libraries(
-	pthread
-	)
-
-
-if(BOWTIE_MM)
-	add_definitions(-DBOWTIE_MM)
-endif()
-
-if(BOWTIE_SHARED_MEM)
-	add_definitions(-DBOWTIE_SHARED_MEM)
-endif()
-
-include_directories(${PROJECT_SOURCE_DIR})
-add_definitions(-DCOMPILER_OPTIONS="${CMAKE_CXX_FLAGS}")
-
-add_library(hisat2lib_static STATIC ${HT2LIB_CPPS} ${SHARED_CPPS})
-add_library(hisat2lib_shared SHARED ${HT2LIB_CPPS} ${SHARED_CPPS})
-add_custom_target(ht2lib)
-add_dependencies(ht2lib hisat2lib_static hisat2lib_shared)
-
-set_target_properties(hisat2lib_static PROPERTIES OUTPUT_NAME hisat2lib)
-set_target_properties(hisat2lib_shared PROPERTIES OUTPUT_NAME hisat2lib)
-
-
-
-
-
-add_executable(hisat2-align-s ${SEARCH_CPPS} ${SHARED_CPPS} ${HT2LIB_CPPS} ${THREE_N_CPPS})
-add_executable(hisat2-align-l ${SEARCH_CPPS} ${SHARED_CPPS} ${HT2LIB_CPPS} ${THREE_N_CPPS})
-add_executable(hisat2-build-s ${BUILD_CPPS} ${SHARED_CPPS} ${THREE_N_CPPS})
-add_executable(hisat2-build-l ${BUILD_CPPS} ${SHARED_CPPS} ${THREE_N_CPPS})
-add_executable(hisat2-inspect-s ${INSPECT_CPPS} ${SHARED_CPPS})
-add_executable(hisat2-inspect-l ${INSPECT_CPPS} ${SHARED_CPPS})
-add_executable(hisat2-repeat ${REPEAT_CPPS} ${SHARED_CPPS} ${THREE_N_CPPS})
-add_executable(hisat-3n-table ${THREE_N_TABLE_CPPS})
-
-set_target_properties(${HISAT2_BIN_LIST} PROPERTIES DEBUG_POSTFIX "-debug")
-set_target_properties(hisat2-align-l hisat2-build-l hisat2-inspect-l hisat2-repeat 
-	PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -DBOWTIE_64BIT_INDEX")
-
-target_compile_options(hisat2-inspect-s PUBLIC "-DHISAT2_INSPECT_MAIN")
-target_compile_options(hisat2-inspect-l PUBLIC "-DHISAT2_INSPECT_MAIN")
-
-target_compile_options(hisat2-build-s PUBLIC "-DMASSIVE_DATA_RLCSA")
-
-target_compile_options(hisat2lib_static PUBLIC "-fPIC" "-DHISAT2_BUILD_LIB")
-target_compile_options(hisat2lib_shared PUBLIC "-fPIC" "-DHISAT2_BUILD_LIB")
-
-target_include_directories(hisat2lib_static PUBLIC hisat2lib)
-target_include_directories(hisat2lib_shared PUBLIC hisat2lib)
-
-if(USE_SRA)
-	if(NOT NCBI_NGS_DIR)
-		message(FATAL_ERROR "You should set NCBI_NGS_DIR path. cmake3 .... -DNCBI_NGS_DIR=/path/to/ngs")
-	endif()
-	#set(NCBI_NGS_DIR /home/parkch/.local/ngs)
-
-	target_compile_options(hisat2-align-s PUBLIC "-DUSE_SRA")
-	target_compile_options(hisat2-align-l PUBLIC "-DUSE_SRA")
-	target_include_directories(hisat2-align-s PUBLIC "${NCBI_NGS_DIR}/include")
-	target_include_directories(hisat2-align-l PUBLIC "${NCBI_NGS_DIR}/include")
-
-	set(NCBI_LIBS 
-		${NCBI_NGS_DIR}/lib64/libncbi-ngs-c++-static.a
-		${NCBI_NGS_DIR}/lib64/libngs-c++-static.a
-		${NCBI_NGS_DIR}/lib64/libncbi-vdb-static.a
-		${CMAKE_DL_LIBS}
-		)
-
-	target_link_libraries(hisat2-align-s ${NCBI_LIBS})
-	target_link_libraries(hisat2-align-l ${NCBI_LIBS})
-endif()
-
-add_custom_target(hisat2-all)
-add_dependencies(hisat2-all
-		hisat2-align-s
-		hisat2-align-l
-		hisat2-build-s
-		hisat2-build-l
-		hisat2-inspect-s
-		hisat2-inspect-l
-		hisat2-repeat
-		hisat-3n-table)
-
-
-#
-# Examples
-#
-#target_compile_options(hisat2-inspect-s PUBLIC $<$<CONFIG:DEBUG>:-DDEBUGONLY>)
-#target_compile_options(hisat2-inspect-s PUBLIC $<$<CONFIG:RELEASE>:-DRELEASEONLY>)
-
-
-
-message(STATUS "C++ Compiler==========: ${CMAKE_CXX_COMPILER}")
-message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
-message(STATUS "CMAKE_CXX_FLAGS_DEBUG: ${CMAKE_CXX_FLAGS_DEBUG}")
-message(STATUS "CMAKE_CXX_FLAGS_RELEASE: ${CMAKE_CXX_FLAGS_RELEASE}")
-
-# Add symlinks for compatibility
-add_custom_target(symlinks ALL
-    COMMAND ${CMAKE_COMMAND} -E create_symlink hisat2-align-s hisat-3n
-    COMMAND ${CMAKE_COMMAND} -E create_symlink hisat2-build-s hisat-3n-build
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+# ---------------------------------------------------------------------------
+# Sources
+# ---------------------------------------------------------------------------
+# Linked into both align and build (shared core)
+set(CORE_CPPS
+    alphabet.cpp
+    ccnt_lut.cpp
+    ds.cpp
+    edit.cpp
+    gfm.cpp
+    limit.cpp
+    multikey_qsort.cpp
+    random_source.cpp
+    reference.cpp
+    ref_read.cpp
+    shmem.cpp
+    tinythread.cpp
 )
 
-
-add_custom_target(symlinks_target
-    COMMAND ${CMAKE_COMMAND} -E create_symlink hisat2-align-s hisat-3n
-    COMMAND ${CMAKE_COMMAND} -E create_symlink hisat2-build-s hisat-3n-build
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+# Align route only
+set(ALIGN_CPPS
+    aligner_bt.cpp
+    aligner_cache.cpp
+    aligner_driver.cpp
+    aligner_result.cpp
+    aligner_seed.cpp
+    aligner_seed2.cpp
+    aligner_seed_policy.cpp
+    aligner_sw.cpp
+    aligner_sw_driver.cpp
+    aligner_swsse.cpp
+    aligner_swsse_ee_i16.cpp
+    aligner_swsse_ee_u8.cpp
+    aligner_swsse_loc_i16.cpp
+    aligner_swsse_loc_u8.cpp
+    aln_sink.cpp
+    dp_framer.cpp
+    outq.cpp
+    pat.cpp
+    pe.cpp
+    presets.cpp
+    qual.cpp
+    random_util.cpp
+    read_qseq.cpp
+    ref_coord.cpp
+    mask.cpp
+    scoring.cpp
+    simple_func.cpp
+    splice_site.cpp
+    sse_util.cpp
+    unique.cpp
+    hisat2.cpp
 )
 
+# Build route only
+set(BUILD_CPPS
+    diff_sample.cpp
+    hisat2_build.cpp
+)
+
+# 3N extension (shared by align + build)
+set(THREE_N_CPPS
+    alignment_3n.cpp
+    position_3n.cpp
+    utility_3n.cpp
+)
+
+# Library backend (exported via hisat2lib for JNI/Python bindings)
+set(HT2LIB_CPPS
+    hisat2lib/ht2_init.cpp
+    hisat2lib/ht2_repeat.cpp
+    hisat2lib/ht2_index.cpp
+)
+
+set(ALL_SOURCES ${CORE_CPPS} ${ALIGN_CPPS} ${BUILD_CPPS} ${THREE_N_CPPS} ${HT2LIB_CPPS})
+
+# ---------------------------------------------------------------------------
+# Find dependencies
+# ---------------------------------------------------------------------------
+find_package(Threads REQUIRED)
+find_package(OpenMP)
+
+# ---------------------------------------------------------------------------
+# OBJECT library: compiled once (PIC), shared by both libraries + the binary
+# ---------------------------------------------------------------------------
+add_library(hisat3n_objs OBJECT ${ALL_SOURCES})
+set_target_properties(hisat3n_objs PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_include_directories(hisat3n_objs
+    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}          # flat in-tree headers
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hisat2lib
+)
+
+target_compile_options(hisat3n_objs PRIVATE
+    $<$<CONFIG:Release>:-O3 -g -funroll-loops -march=native -faligned-new>
+    $<$<BOOL:${OpenMP_FOUND}>:-fopenmp>
+)
+
+target_compile_definitions(hisat3n_objs PRIVATE
+    BOWTIE2
+    HISAT2_VERSION="${HISAT2_VERSION}"
+    BUILD_TIME="${BUILD_DATE}"
+    BUILD_HOST="${CMAKE_HOST_SYSTEM}"
+    COMPILER_VERSION="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+    COMPILER_OPTIONS="${CMAKE_CXX_FLAGS}"
+    _LARGEFILE_SOURCE
+    _FILE_OFFSET_BITS=64
+    _GNU_SOURCE
+    POPCNT_CAPABILITY
+    $<$<BOOL:${BOWTIE_MM}>:BOWTIE_MM>
+    $<$<BOOL:${BOWTIE_SHARED_MEM}>:BOWTIE_SHARED_MEM>
+    $<$<BOOL:${USE_SRA}>:USE_SRA>
+    $<$<BOOL:${USE_64BIT_INDEX}>:BOWTIE_64BIT_INDEX>
+)
+
+# ---------------------------------------------------------------------------
+# Static + shared libraries (export hisat2()/hisat2_build()/ht2_* for bindings)
+# ---------------------------------------------------------------------------
+add_library(hisat3n_static STATIC $<TARGET_OBJECTS:hisat3n_objs>)
+add_library(hisat3n_shared SHARED $<TARGET_OBJECTS:hisat3n_objs>)
+
+foreach(target hisat3n_static hisat3n_shared)
+    target_link_libraries(${target} PUBLIC Threads::Threads)
+    if(OpenMP_FOUND)
+        target_link_libraries(${target} PUBLIC OpenMP::OpenMP_CXX)
+    endif()
+    if(USE_SRA)
+        if(NOT NCBI_NGS_DIR)
+            message(FATAL_ERROR "USE_SRA requires -DNSRA_DIR=/path/to/ngs (via -DNCBI_NGS_DIR)")
+        endif()
+        target_include_directories(${target} PRIVATE "${NCBI_NGS_DIR}/include")
+        target_link_libraries(${target} PUBLIC
+            ${NCBI_NGS_DIR}/lib64/libncbi-ngs-c++-static.a
+            ${NCBI_NGS_DIR}/lib64/libngs-c++-static.a
+            ${NCBI_NGS_DIR}/lib64/libncbi-vdb-static.a
+            ${CMAKE_DL_LIBS})
+    endif()
+endforeach()
+
+set_target_properties(hisat3n_static PROPERTIES OUTPUT_NAME hisat3n)
+set_target_properties(hisat3n_shared PROPERTIES OUTPUT_NAME hisat3n)
+
+# ---------------------------------------------------------------------------
+# Single binary: dispatches by subcommand (align | build) or argv[0] shim.
+# main.cpp is the ONLY executable-source file; the library holds no main().
+# ---------------------------------------------------------------------------
+add_executable(hisat3n main.cpp)
+target_link_libraries(hisat3n PRIVATE hisat3n_static)
+
+# ---------------------------------------------------------------------------
+# Install
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+install(TARGETS hisat3n hisat3n_static hisat3n_shared
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)

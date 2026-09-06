@@ -62,6 +62,7 @@ void OutputQueue::finishRead(const BTString& rec, TReadId rdid, size_t threadId)
 		assert(!finished_[rdid - cur_]);
 		lines_[rdid - cur_] = rec;
 		nfinished_++;
+		nfinished_2.fetch_add(1, std::memory_order_relaxed);
 		finished_[rdid - cur_] = true;
 		flush(false, false); // don't force; already have lock
 	} else {
@@ -70,6 +71,10 @@ void OutputQueue::finishRead(const BTString& rec, TReadId rdid, size_t threadId)
 		nflushed_++;
 		nfinished_2.fetch_add(1, std::memory_order_relaxed);
 		nflushed_2.fetch_add(1, std::memory_order_relaxed);
+		{
+			std::lock_guard<std::mutex> lk(cv_m);
+			cv.notify_one();
+		}
 	}
 }
 
@@ -99,6 +104,7 @@ void OutputQueue::flush(bool force, bool getLock) {
 		finished_.erase(0, nflush);
 		cur_ += nflush;
 		nflushed_ += nflush;
+		nflushed_2.fetch_add(nflush, std::memory_order_relaxed);
 	}
 }
 

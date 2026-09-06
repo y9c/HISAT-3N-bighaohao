@@ -28,6 +28,8 @@
 #include "mem_ids.h"
 #include <atomic>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 #include "concurrentqueue.h"
 
 /**
@@ -65,31 +67,53 @@ public:
 		nstarted_2.store(0, std::memory_order_release);
 		nfinished_2.store(0, std::memory_order_release);
 		nflushed_2.store(0, std::memory_order_release);
-		output_work = true;
+		output_work.store(true, std::memory_order_release);
 	}
 
+	/**
+	 * Signal that no more output will be produced and ask the output thread
+	 * to drain any remaining records and exit.  The main thread has already
+	 * flushed all pending records (oq.flush(true)) before calling this, so by
+	 * the time output_thread.join() returns the output thread has drained
+	 * the queue and written everything to obuf_.
+	 */
 	void endoutput()
 	{
-		while(true) {
-			size_t temp_size = output_queue_2.size_approx();
-			if(temp_size == 0) {
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-				if(output_queue_2.size_approx() == 0) {
-					output_work = false;
-					break;
-				}
-			}
+		output_work.store(false, std::memory_order_release);
+		{
+			std::lock_guard<std::mutex> lk(cv_m);
+			cv.notify_one();
 		}
 	}
 
+	/**
+	 * Output thread entry point.  Drains the lock-free concurrent queue and
+	 * writes each record to obuf_ without holding cv_m.  When the queue is
+	 * empty and output is still active it parks on the condition variable;
+	 * the producer notifies (holding cv_m) after each enqueue so no wakeup is
+	 * lost.  When output_work goes false and the queue is drained, it exits.
+	 */
 	void get_output_from_queue_2()
 	{
 		BTString temp;
-		while(output_work) {
+		while(true) {
+			// Drain whatever is available (lock-free queue needs no lock, and
+			// obuf_ writes must not hold cv_m).
 			while(output_queue_2.try_dequeue(temp)) {
 				obuf_.writeString(temp);
 			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			std::unique_lock<std::mutex> lk(cv_m);
+			// Park until either more records arrive or output is being shut down.
+			// The predicate is re-checked under cv_m, and the producer notifies
+			// while holding cv_m, so this cannot miss a wakeup.
+			cv.wait(lk, [this]() {
+				return !output_work.load(std::memory_order_acquire) ||
+				       output_queue_2.size_approx() != 0;
+			});
+			if(!output_work.load(std::memory_order_acquire) &&
+			   output_queue_2.size_approx() == 0) {
+				break;
+			}
 		}
 	}
 
@@ -154,7 +178,13 @@ protected:
 	std::atomic<TReadId> nstarted_2;
 	std::atomic<TReadId> nfinished_2;
 	std::atomic<TReadId> nflushed_2;
-	bool output_work;
+	std::atomic<bool> output_work;
+	// Protects only the condition-variable wait/signal; the data itself is
+	// carried by the lock-free output_queue_2.  cv_m is always held by the
+	// producer at the moment it notifies, so the consumer's predicate re-check
+	// cannot miss a wakeup.
+	std::mutex cv_m;
+	std::condition_variable cv;
 };
 
 class OutputQueueMark {

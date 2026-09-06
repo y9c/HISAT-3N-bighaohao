@@ -185,15 +185,6 @@ enum {
 static void printUsage(ostream& out) {
 	out << "HISAT2 version " << string(HISAT2_VERSION).c_str() << " by Daehwan Kim (infphilo@gmail.com, http://www.ccb.jhu.edu/people/infphilo)" << endl;
     
-#ifdef BOWTIE_64BIT_INDEX
-	string tool_name = "hisat2-build-l";
-#else
-	string tool_name = "hisat2-build-s";
-#endif
-	if(wrapper == "basic-0") {
-		tool_name = "hisat2-build";
-	}
-    
 	out << "Usage: hisat2-build [options]* <reference_in> <ht2_index_base>" << endl
 	    << "    reference_in            comma-separated list of files with ref sequences" << endl
 	    << "    hisat2_index_base       write " << current_gfm_ext() << " data to files with this dir/basename" << endl
@@ -232,14 +223,6 @@ static void printUsage(ostream& out) {
 	    << "    --usage                 print this usage message" << endl
 	    << "    --version               print version information and quit" << endl
 	    ;
-    
-    if(wrapper.empty()) {
-		cerr << endl
-        << "*** Warning ***" << endl
-        << "'" << tool_name << "' was run directly.  It is recommended "
-        << "that you run the wrapper script 'hisat2-build' instead."
-        << endl << endl;
-	}
 }
 
 static const char *short_options = "qrap:h?nscfl:i:o:t:h:3C";

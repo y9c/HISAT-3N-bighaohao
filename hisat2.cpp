@@ -1055,12 +1055,6 @@ static void printUsage(ostream& out) {
 	    << "  --version          print version information and quit" << endl
 	    << "  -h/--help          print this usage message" << endl
 	    ;
-	if(wrapper.empty()) {
-		cerr << endl
-		     << "*** Warning ***" << endl
-			 << "'hisat2-align' was run directly.  It is recommended that you run the wrapper script 'hisat2' instead." << endl
-			 << endl;
-	}
 }
 
 /**
